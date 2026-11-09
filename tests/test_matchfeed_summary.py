@@ -42,7 +42,9 @@ async def test_matchfeed_tone_is_saved_per_server(monkeypatch):
     monkeypatch.setattr(bot, "save_matchfeeds", lambda value: save(value))
     interaction = SimpleNamespace(guild=object(), guild_id=1, permissions=SimpleNamespace(administrator=True),
                                   response=SimpleNamespace(send_message=AsyncMock()))
-    await bot.matchfeed_tone_cmd.callback(interaction, SimpleNamespace(value="kind"))
+    from commands.matches import MatchesCog
+    cog = MatchesCog(bot.make_command_context())
+    await cog.matchfeed_tone_cmd.callback(cog, interaction, SimpleNamespace(value="kind"))
     assert feeds["1"]["tone"] == "kind" and "tone" not in feeds["2"]
     assert feeds["1"]["seen"] == ["match"]
     assert save.call_count == 1
@@ -103,7 +105,9 @@ async def test_recent_displays_full_scoreboard(monkeypatch):
     render = AsyncMock(return_value=view)
     monkeypatch.setattr(bot, "recent_scoreboard_view", render)
 
-    await bot.recent_cmd.callback(interaction)
+    from commands.matches import MatchesCog
+    cog = MatchesCog(bot.make_command_context())
+    await cog.recent_cmd.callback(cog, interaction)
 
     assert render.await_args.args == ({"players": team}, friend)
     view.card.assert_awaited_once_with("full")
