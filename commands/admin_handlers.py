@@ -13,12 +13,13 @@ from datetime import datetime
 import discord
 import json
 from datetime import timezone
+from utils.recap_tones import normalize_tone
 
 async def clearcache(interaction, *, cache_store):
     cache_store.clear_expiring()
     await interaction.response.send_message('Cleared. Match summaries stay cached.', ephemeral=True)
 
-async def test_play_card(interaction, *, play_match_image):
+async def test_play_card(interaction, *, play_match_image, load_matchfeeds):
     if not interaction.guild or not interaction.permissions.administrator:
         return await interaction.response.send_message('Only server administrators can use this command.', ephemeral=True)
     await interaction.response.defer(ephemeral=True)
@@ -37,7 +38,9 @@ async def test_play_card(interaction, *, play_match_image):
             victim = blue if player['team_id'] == 'Red' else kevin if kill_index % 2 else spam
             kills.append({'round': round_number, 'time_in_round_in_ms': 1000 + kill_index * 2500, 'killer': {'puuid': player['puuid']}, 'victim': {'puuid': victim['puuid']}})
     detail = {'metadata': {'map': {'id': '224b0a95-48b9-f703-1bd8-67aca101a61f', 'name': 'Abyss'}, 'started_at': now.isoformat(), 'game_length_in_ms': 44 * 60 * 1000}, 'teams': [{'team_id': 'Red', 'won': False, 'rounds': {'won': 8, 'lost': 13}, 'premier_roster': {'name': 'Queue'}}, {'team_id': 'Blue', 'won': True, 'rounds': {'won': 13, 'lost': 8}, 'premier_roster': {'name': 'Opponents'}}], 'players': [kevin, spam, blue], 'kills': kills}
-    card = await play_match_image(detail, [kevin, spam], [kevin, spam], kevin)
+    feed = load_matchfeeds().get(str(interaction.guild_id)) or {}
+    tone = normalize_tone(feed.get('tone'))
+    card = await play_match_image(detail, [kevin, spam], [kevin, spam], kevin, tone=tone)
     await interaction.followup.send(file=card, ephemeral=True)
 
 async def test_rank_card(interaction, scenario, *, rank_change_image):

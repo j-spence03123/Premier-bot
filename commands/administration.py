@@ -27,7 +27,8 @@ class AdministrationCog(commands.Cog):
     @app_commands.command(name='testplaycard', description='Preview a sample play-session match card (administrators only)')
     @app_commands.default_permissions(administrator=True)
     async def test_play_card(self, interaction: discord.Interaction):
-        return await admin_handlers.test_play_card(interaction, play_match_image=self.runtime.play_match_image)
+        return await admin_handlers.test_play_card(interaction, play_match_image=self.runtime.play_match_image,
+                                                   load_matchfeeds=self.runtime.load_matchfeeds)
 
     @app_commands.command(name='testrankcard', description='Preview a rank change image (administrators only)')
     @app_commands.default_permissions(administrator=True)

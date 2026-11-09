@@ -1,4 +1,5 @@
 from utils.match_summary import _play_headline, _play_recap
+from utils.recap_tones import DEFAULT_TONE
 from io import BytesIO
 from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
@@ -48,6 +49,29 @@ async def test_matchfeed_tone_is_saved_per_server(monkeypatch):
     assert feeds["1"]["tone"] == "kind" and "tone" not in feeds["2"]
     assert feeds["1"]["seen"] == ["match"]
     assert save.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("feeds,expected", [({"1": {"tone": "kind"}}, "kind"),
+                                          ({"1": {"tone": "constructive"}}, "constructive"),
+                                          ({"1": {"tone": "harsh"}}, "harsh"),
+                                          ({}, DEFAULT_TONE)])
+async def test_play_card_preview_uses_server_tone(monkeypatch, feeds, expected):
+    monkeypatch.setenv("DISCORD_TOKEN", "test-token")
+    monkeypatch.setenv("HENRIK_API_KEY", "test-key")
+    import bot
+    from commands.administration import AdministrationCog
+
+    monkeypatch.setattr(bot, "load_matchfeeds", lambda: feeds)
+    render = AsyncMock(return_value=object())
+    monkeypatch.setattr(bot, "play_match_image", render)
+    interaction = SimpleNamespace(guild=object(), guild_id=1, permissions=SimpleNamespace(administrator=True),
+                                  response=SimpleNamespace(defer=AsyncMock()),
+                                  followup=SimpleNamespace(send=AsyncMock()))
+    cog = AdministrationCog(bot.make_command_context())
+    await cog.test_play_card.callback(cog, interaction)
+    assert render.await_args.kwargs["tone"] == expected
+    interaction.followup.send.assert_awaited_once()
 
 
 @pytest.mark.asyncio
