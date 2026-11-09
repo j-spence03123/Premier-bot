@@ -1,7 +1,11 @@
 import random
+from utils.recap_tones import normalize_tone
 
 
-def _play_recap(map_name, won, our_score, their_score, tracked, all_teammates, duration, detail=None, registered_only=False):
+def _play_recap(map_name, won, our_score, their_score, tracked, all_teammates, duration, detail=None, registered_only=False, tone="no_filter"):
+    tone = normalize_tone(tone)
+    if tone != "no_filter":
+        return _toned_recap(map_name, won, our_score, their_score, all_teammates, duration, tone)
     result = "snatched the win" if won else "took the L"
     subject = "Your team" if registered_only else "Your queue"
     recap = f"{subject} {result} on {map_name} after {duration} of competitive Valorant, {our_score}-{their_score}."
@@ -113,7 +117,35 @@ def _round_highlights(detail, teammates, weakest):
     return highlights
 
 
-def _play_headline(all_teammates, our_score, their_score, registered_only=False):
+def _toned_recap(map_name, won, our_score, their_score, players, duration, tone):
+    result = "won" if won else "lost"
+    text = f"Your team {result} {our_score}-{their_score} on {map_name} after {duration}."
+    ranked = sorted(players, key=lambda player: (player.get("stats") or {}).get("score", 0), reverse=True)
+    if not ranked:
+        return text
+    top = ranked[0]
+    stats = top.get("stats") or {}
+    acs = round(stats.get("score", 0) / max(our_score + their_score, 1))
+    text += (f" {top.get('name', 'A player')} recorded {stats.get('kills', 0)}/"
+             f"{stats.get('deaths', 0)}/{stats.get('assists', 0)} with {acs} ACS.")
+    if len(ranked) > 1:
+        low = ranked[-1]
+        stats = low.get("stats") or {}
+        acs = round(stats.get("score", 0) / max(our_score + their_score, 1))
+        text += (f" {low.get('name', 'Another player')} finished with {stats.get('kills', 0)}/"
+                 f"{stats.get('deaths', 0)}/{stats.get('assists', 0)} and {acs} ACS.")
+    endings = {
+        "kind": "Every match is another chance to build on what worked together.",
+        "harsh": "The numbers leave plenty of room for improvement before the next game.",
+        "constructive": "Review the round events together and look for opportunities to improve team trades and survival.",
+    }
+    return text + " " + endings[tone]
+
+
+def _play_headline(all_teammates, our_score, their_score, registered_only=False, tone="no_filter"):
+    if normalize_tone(tone) != "no_filter":
+        return {"kind": "A MATCH TO BUILD ON", "harsh": "THE SCOREBOARD TELLS THE STORY",
+                "constructive": "MATCH REVIEW"}[normalize_tone(tone)]
     if not all_teammates:
         return "MATCH RECAP"
     weakest = min(all_teammates, key=lambda p: (p.get("stats") or {}).get("score", 0))

@@ -38,6 +38,7 @@ from services.playbook_service import PlaybookDataError, PlaybookService
 from services.valorant_api import HenrikDevClient
 from utils.formatting import fmt_range, parse_time
 from utils.recent_scoreboard import has_half_data
+from utils.recap_tones import TONE_LABELS, normalize_tone
 from utils.statistics import summarise_match
 
 TOKEN = SETTINGS.discord_token
@@ -903,6 +904,7 @@ async def matchfeed_cmd(interaction: discord.Interaction, channel: discord.TextC
             "channel_id": channel.id,
             "started_at": datetime.now(timezone.utc).isoformat(),
             "seen": [],
+            "tone": normalize_tone(existing.get("tone")),
         }
     else:
         existing["channel_id"] = channel.id
@@ -914,6 +916,24 @@ async def matchfeed_cmd(interaction: discord.Interaction, channel: discord.TextC
         f"Automatic match reports will post in {channel.mention} for each new competitive match involving a registered account. Same-team players are combined into one post, and rank changes are announced there too.",
         ephemeral=True,
     )
+
+
+@tree.command(name="matchfeed_tone", description="Set the tone of this server's matchfeed recaps")
+@app_commands.default_permissions(administrator=True)
+@app_commands.describe(tone="How the matchfeed recap should describe performances")
+@app_commands.choices(tone=[app_commands.Choice(name=label, value=value) for value, label in TONE_LABELS.items()])
+async def matchfeed_tone_cmd(interaction: discord.Interaction, tone: app_commands.Choice[str]):
+    if not interaction.guild or not interaction.permissions.administrator:
+        return await interaction.response.send_message("Only server administrators can configure the match feed.", ephemeral=True)
+    feeds = load_matchfeeds()
+    feed = feeds.get(str(interaction.guild_id))
+    if not feed:
+        return await interaction.response.send_message("Set up a match feed with /matchfeed first.", ephemeral=True)
+    if tone.value not in TONE_LABELS:
+        return await interaction.response.send_message("Unknown recap tone.", ephemeral=True)
+    feed["tone"] = tone.value
+    save_matchfeeds(feeds)
+    await interaction.response.send_message(f"Matchfeed recap tone set to **{TONE_LABELS[tone.value]}**.", ephemeral=True)
 
 
 async def play_session_loop():
@@ -1187,10 +1207,12 @@ async def matchfeed_loop():
                         cards_by_roster = {}
                         for guild_key, feed, channel, mentions, team_id, registered_players, all_team_players, result_word, score in notify_targets:
                             try:
-                                roster_key = (team_id, tuple(p.get("puuid") for p in registered_players))
+                                tone = normalize_tone(feed.get("tone"))
+                                roster_key = (team_id, tuple(p.get("puuid") for p in registered_players), tone)
                                 if roster_key not in cards_by_roster:
                                     card = await play_match_image(detail, registered_players, all_team_players,
-                                                                  registered_players[0], summary_players=registered_players)
+                                                                  registered_players[0], summary_players=registered_players,
+                                                                  tone=tone)
                                     cards_by_roster[roster_key] = card.fp.getvalue()
                                 await channel.send(
                                     content=format_match_notification(
@@ -1251,7 +1273,7 @@ async def matchfeed_loop():
         await asyncio.sleep(max(1, 300 - (loop.time() - cycle_started)))
 
 
-async def play_match_image(detail, queued_players, all_teammates, representative, summary_players=None):
+async def play_match_image(detail, queued_players, all_teammates, representative, summary_players=None, tone="no_filter"):
     map_data = (detail.get("metadata", {}).get("map") or {})
     map_uuid = map_data.get("id") or map_data.get("uuid")
     map_name = map_data.get("name", "Unknown")
@@ -1308,9 +1330,9 @@ async def play_match_image(detail, queued_players, all_teammates, representative
     loop = asyncio.get_running_loop()
     focus = summary_players if summary_players is not None else all_teammates
     recap = await generate_recap(client.http_session, SETTINGS.groq_api_key, SETTINGS.groq_model,
-                                 detail, focus, representative, registered_only=summary_players is not None)
+                                 detail, focus, representative, registered_only=summary_players is not None, tone=tone)
     buffer = await loop.run_in_executor(None, draw_play_result, detail, render_players, all_teammates,
-                                        representative, path, recap, summary_players)
+                                        representative, path, recap, summary_players, tone)
     return discord.File(buffer, filename="match.png")
 
 
@@ -2261,7 +2283,7 @@ for _cmd in (agent_cmd, assignagent, lineup, clearagent):
 HELP_SECTIONS = [
     ("Premier", ["schedule", "results", "mapresults", "scout", "agent", "lineup", "clearagent", "playbook"]),
     ("Players", ["register", "unregister", "accounts", "rank", "player", "recent", "play"]),
-    ("Server managers", ["registeruser", "assignagent", "createplaybook", "setschedule", "testreminder", "testplaycard", "testrankcard", "clearcache"]),
+    ("Server managers", ["registeruser", "assignagent", "createplaybook", "setschedule", "matchfeed", "matchfeed_tone", "testreminder", "testplaycard", "testrankcard", "clearcache"]),
     ("Troubleshooting", ["findteam", "debug"]),
 ]
 

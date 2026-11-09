@@ -24,7 +24,7 @@ def _assign_unique_tags(tracked):
         item["tags"] = tags
 
 
-def draw_play_result(detail, queued_players, all_teammates, representative, map_path, ai_recap=None, summary_players=None):
+def draw_play_result(detail, queued_players, all_teammates, representative, map_path, ai_recap=None, summary_players=None, tone="no_filter"):
     meta = detail.get("metadata", {})
     teams = {t.get("team_id"): t for t in detail.get("teams", [])}
     team = teams.get(representative.get("team_id"), {})
@@ -115,8 +115,8 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     registered_only = summary_players is not None
     focus_ids = {p.get("puuid") for p in focus if p.get("puuid")}
     summary_tracked = [item for item in tracked if item["p"].get("puuid") in focus_ids] if registered_only else tracked
-    recap = (ai_recap or {}).get("recap") or _play_recap(map_name, won, our_score, their_score, summary_tracked, focus, duration, detail, registered_only)
-    headline = ((ai_recap or {}).get("headline") or _play_headline(focus, our_score, their_score, registered_only)).upper()
+    recap = (ai_recap or {}).get("recap") or _play_recap(map_name, won, our_score, their_score, summary_tracked, focus, duration, detail, registered_only, tone)
+    headline = ((ai_recap or {}).get("headline") or _play_headline(focus, our_score, their_score, registered_only, tone)).upper()
     recap_font = match_font(23)
     measure_draw = ImageDraw.Draw(Image.new("RGB", (width, 1)))
     columns, side_pad, column_gap = 2, 24, 18

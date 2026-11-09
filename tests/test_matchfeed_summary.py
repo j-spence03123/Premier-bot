@@ -1,6 +1,6 @@
 from utils.match_summary import _play_headline, _play_recap
 from io import BytesIO
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
 
 import pytest
@@ -20,6 +20,32 @@ def test_registered_only_fallback_mentions_only_the_selected_player():
     assert "Friend" in text
     assert "Stranger" not in text and "STRANGER" not in headline
     assert "topping the team" not in text
+
+
+@pytest.mark.parametrize("tone", ["kind", "constructive", "harsh"])
+def test_fallback_tone_avoids_default_profanity(tone):
+    friend = {"puuid": "p1", "name": "Friend", "stats": {"kills": 3, "deaths": 20, "score": 400}}
+    text = _play_recap("Haven", False, 8, 13, [], [friend], "30 min", tone=tone)
+    headline = _play_headline([friend], 8, 13, tone=tone)
+    assert "Friend" in text and "3/20/0" in text
+    assert not any(word in (text + headline).lower() for word in ("fuck", "shit", "bastard"))
+
+
+@pytest.mark.asyncio
+async def test_matchfeed_tone_is_saved_per_server(monkeypatch):
+    monkeypatch.setenv("DISCORD_TOKEN", "test-token")
+    monkeypatch.setenv("HENRIK_API_KEY", "test-key")
+    import bot
+    feeds = {"1": {"channel_id": 5, "seen": ["match"]}, "2": {"channel_id": 6}}
+    monkeypatch.setattr(bot, "load_matchfeeds", lambda: feeds)
+    save = Mock()
+    monkeypatch.setattr(bot, "save_matchfeeds", lambda value: save(value))
+    interaction = SimpleNamespace(guild=object(), guild_id=1, permissions=SimpleNamespace(administrator=True),
+                                  response=SimpleNamespace(send_message=AsyncMock()))
+    await bot.matchfeed_tone_cmd.callback(interaction, SimpleNamespace(value="kind"))
+    assert feeds["1"]["tone"] == "kind" and "tone" not in feeds["2"]
+    assert feeds["1"]["seen"] == ["match"]
+    assert save.call_count == 1
 
 
 @pytest.mark.asyncio

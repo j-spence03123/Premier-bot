@@ -2,7 +2,7 @@
 
 from .base import make_command_cog
 
-COMMAND_NAMES = ("results", "mapresults", "play", "matchfeed", "recent")
+COMMAND_NAMES = ("results", "mapresults", "play", "matchfeed", "matchfeed_tone", "recent")
 
 
 def build_matches_cog(commands):

@@ -47,6 +47,19 @@ async def test_groq_recap_uses_match_facts_and_extracts_text():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("tone,expected", [("kind", "warm"), ("harsh", "blunt"),
+                                           ("constructive", "actionable"), ("no_filter", "profane")])
+async def test_recap_prompt_uses_selected_tone(tone, expected):
+    session = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop",
+        "message": {"content": '{"headline":"Match", "recap":"Recap."}'}}]}))
+    await generate_recap(session, "key", "model", {}, [], {}, tone=tone)
+    prompt = session.request[1]["json"]["messages"][0]["content"]
+    assert expected in prompt
+    if tone != "no_filter":
+        assert "savage banter" not in prompt
+
+
+@pytest.mark.asyncio
 async def test_groq_error_falls_back_without_exposing_response(caplog):
     session = FakeSession(FakeResponse(429, {"error": {"code": "rate_limit_exceeded"}}))
 

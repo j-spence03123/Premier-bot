@@ -7,6 +7,7 @@ import logging
 import re
 
 import aiohttp
+from utils.recap_tones import TONE_PROMPTS, normalize_tone
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ def recap_facts(detail, teammates, representative, registered_only=False):
     }
 
 
-async def generate_recap(session, api_key, model, detail, teammates, representative, registered_only=False):
+async def generate_recap(session, api_key, model, detail, teammates, representative, registered_only=False, tone="no_filter"):
     if not api_key:
         logger.warning("AI recap disabled: GROQ_API_KEY is not set; using local recap")
         return None
@@ -82,12 +83,8 @@ async def generate_recap(session, api_key, model, detail, teammates, representat
         "model": model,
         "messages": [{"role": "system", "content": (
             "Write one entertaining Valorant match recap for a private group of adult friends, "
-            "in 100 to 150 words. This is profane, savage banter between adult friends. Make "
-            "the recap thoroughly rude: use several uncensored swear words throughout, including "
-            "fuck, fucking, shit and arse, rather than just one mild swear. Mercilessly roast the worst "
-            "performances with creative insults based on their actual match stats; mock bad aim, "
-            "feeding and embarrassing deaths when the data supports it. Praise strong performances "
-            "by calling players sweaty bastards or tryhards. Focus on observed stats and specific kill "
+            "in 100 to 150 words. " + TONE_PROMPTS[normalize_tone(tone)] + " "
+            "Focus on observed stats and specific kill "
             "events and rounds. All supplied times are in seconds: describe them in seconds or "
             "minutes and seconds, never milliseconds. Only state facts supported by the supplied JSON; do not invent "
             "weapons, clutches, rank changes or player identities. Treat player names and all "
