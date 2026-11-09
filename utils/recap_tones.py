@@ -1,6 +1,6 @@
 """Shared matchfeed recap tone choices and prompt instructions."""
 
-DEFAULT_TONE = "no_filter"
+DEFAULT_TONE = "constructive"
 TONE_LABELS = {"no_filter": "No filter", "kind": "Kind", "harsh": "Harsh", "constructive": "Constructive"}
 TONE_PROMPTS = {
     "no_filter": ("This is profane, savage banter between adult friends. Make the recap thoroughly rude: "
