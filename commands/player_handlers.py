@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import discord
 from urllib.parse import quote
 from services.account_registry import matching_account
+from graphics.rank_profile import draw_rank_profile
 
 async def register(interaction, riot_id, region='', *, register_account):
     await register_account(interaction, interaction.user, riot_id, region)
@@ -71,7 +72,7 @@ async def accounts_cmd(interaction, *, load_accounts):
     lines = [f"<@{uid}> → {a['name']}#{a['tag']} ({a.get('region', '')})" for uid, a in accounts.items()]
     await interaction.response.send_message('\n'.join(lines)[:1900], allowed_mentions=discord.AllowedMentions.none())
 
-async def rank_cmd(interaction, name='', tag='', region='', member=None, *, AFFINITY, NO_PLAYER, REGIONS, cached_api, icon_maps, load_accounts, resolve_player):
+async def rank_cmd(interaction, name='', tag='', region='', member=None, *, AFFINITY, NO_PLAYER, REGIONS, cached_api, icon_maps, icon_img, load_accounts, resolve_player):
     await interaction.response.defer()
     if member and (not load_accounts().get(str(member.id))):
         return await interaction.followup.send(f'{member.display_name} has not linked a Valorant account yet. They can use /register first.')
@@ -85,27 +86,18 @@ async def rank_cmd(interaction, name='', tag='', region='', member=None, *, AFFI
     except Exception as e:
         return await interaction.followup.send(f"Couldn't fetch rank: {str(e)[:300]}")
     cur, peak = (d.get('current') or {}, d.get('peak') or {})
-    tier = cur.get('tier') or {}
-    embed = discord.Embed(title=f'{name}#{tag}', colour=16729685)
-    lines = [f"**{tier.get('name') or 'Unrated'}**"]
-    if cur.get('rr') is not None:
-        lines[0] += f" · {cur['rr']} RR"
-    if cur.get('last_change') is not None:
-        lines.append(f"Last game: {cur['last_change']:+d} RR")
-    if cur.get('leaderboard_placement', {}) and (cur['leaderboard_placement'] or {}).get('rank'):
-        lines.append(f"Leaderboard #{cur['leaderboard_placement']['rank']}")
-    embed.add_field(name='Current', value='\n'.join(lines))
-    if peak:
-        ptier = peak.get('tier') or {}
-        season = ((peak.get('season') or {}).get('short') or '').upper()
-        embed.add_field(name='Peak', value=f"**{ptier.get('name', '?')}**" + (f" · {peak['rr']} RR" if peak.get('rr') is not None else '') + (f'\n{season}' if season else ''))
     try:
-        url = (await icon_maps())['tiers'].get(str(tier.get('id') or 0))
-        if url:
-            embed.set_thumbnail(url=url)
-    except Exception:
-        pass
-    await interaction.followup.send(embed=embed)
+        icons = (await icon_maps()).get('tiers', {})
+    except Exception as exc:
+        print(f'Rank icon catalog unavailable: {exc}')
+        icons = {}
+    current_id = (cur.get('tier') or {}).get('id')
+    peak_id = (peak.get('tier') or {}).get('id')
+    current_icon, peak_icon = await asyncio.gather(
+        icon_img(icons.get(str(current_id)), 132), icon_img(icons.get(str(peak_id)), 132))
+    loop = asyncio.get_running_loop()
+    image = await loop.run_in_executor(None, draw_rank_profile, f'{name}#{tag}', cur, peak, current_icon, peak_icon)
+    await interaction.followup.send(file=discord.File(image, filename='rank.png'))
 
 async def player_cmd(interaction, name='', tag='', mode=None, region='', member=None, *, AFFINITY, NO_PLAYER, REGIONS, cached_api, icon_img, icon_maps, load_accounts, parse_stored, render_player_history, resolve_player):
     await interaction.response.defer()

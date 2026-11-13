@@ -35,7 +35,7 @@ class PlayersCog(commands.Cog):
     @app_commands.command(name='rank', description='Current and peak rank for a Riot ID, you, or a member with a linked account')
     @app_commands.describe(name='Riot name, or Name#TAG', tag='Tag (after the #)', region='eu, na, ap, kr, latam or br', member='Select or @mention a member; uses their /register account')
     async def rank_cmd(self, interaction: discord.Interaction, name: str='', tag: str='', region: str='', member: discord.Member=None):
-        return await player_handlers.rank_cmd(interaction, name, tag, region, member, AFFINITY=self.runtime.AFFINITY, NO_PLAYER=self.runtime.NO_PLAYER, REGIONS=self.runtime.REGIONS, cached_api=self.runtime.cached_api, icon_maps=self.runtime.icon_maps, load_accounts=self.runtime.load_accounts, resolve_player=self.runtime.resolve_player)
+        return await player_handlers.rank_cmd(interaction, name, tag, region, member, AFFINITY=self.runtime.AFFINITY, NO_PLAYER=self.runtime.NO_PLAYER, REGIONS=self.runtime.REGIONS, cached_api=self.runtime.cached_api, icon_maps=self.runtime.icon_maps, icon_img=self.runtime.icon_img, load_accounts=self.runtime.load_accounts, resolve_player=self.runtime.resolve_player)
 
     @app_commands.command(name='player', description='Recent matches and averages for a Riot ID, you, or a member with a linked account')
     @app_commands.describe(name='Riot name, or Name#TAG', tag='Tag (after the #)', mode='Game mode (default competitive)', region='eu, na, ap, kr, latam or br', member='Select or @mention a member; uses their /register account')
