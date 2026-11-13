@@ -75,6 +75,9 @@ class BotClient(commands.Bot):
 
     async def setup_hook(self):
         await super().setup_hook()
+        removed = state.remove_duplicate_accounts()
+        if removed:
+            print(f"Removed {len(removed)} duplicate account registration(s); a backup was saved.")
         if not self._command_cogs_loaded:
             await install_command_cogs(self, make_command_context())
             self._command_cogs_loaded = True

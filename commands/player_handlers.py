@@ -1,8 +1,10 @@
 """Feature command implementations; application dependencies are injected at registration."""
 from __future__ import annotations
 import asyncio
+from datetime import datetime, timezone
 import discord
 from urllib.parse import quote
+from services.account_registry import matching_account
 
 async def register(interaction, riot_id, region='', *, register_account):
     await register_account(interaction, interaction.user, riot_id, region)
@@ -19,14 +21,32 @@ async def register_account(interaction, target, riot_id, region, *, AFFINITY, RE
         return await interaction.followup.send('Enter your Riot ID as Name#TAG, including the #.')
     name, tag = parts
     reg = region.lower() if region.lower() in REGIONS else AFFINITY
+    requested = {'name': name, 'tag': tag, 'region': reg}
+    accounts = load_accounts()
+    if any(uid != str(target.id) and isinstance(account, dict) and matching_account(requested, account)
+           for uid, account in accounts.items()):
+        return await interaction.followup.send('That VALORANT account is already registered to another user.')
     data = None
     try:
         data = await cached_api(f'/valorant/v3/mmr/{reg}/pc/{quote(name)}/{quote(tag)}', 300)
     except Exception as e:
         if '404' in str(e):
             return await interaction.followup.send(f"Couldn't find {name}#{tag} in {reg}. Check the spelling and region.")
+    resolved = (data.get('account') or {}) if isinstance(data, dict) else {}
+    if not isinstance(resolved, dict):
+        resolved = {}
+    requested['name'] = resolved.get('name') or name
+    requested['tag'] = resolved.get('tag') or tag
+    if resolved.get('puuid'):
+        requested['puuid'] = resolved['puuid']
     accounts = load_accounts()
-    accounts[str(target.id)] = {'name': name, 'tag': tag, 'region': reg}
+    if any(uid != str(target.id) and isinstance(account, dict) and matching_account(requested, account)
+           for uid, account in accounts.items()):
+        return await interaction.followup.send('That VALORANT account is already registered to another user.')
+    previous = accounts.get(str(target.id))
+    previous_time = previous.get('registered_at') if isinstance(previous, dict) and matching_account(previous, requested) else None
+    requested['registered_at'] = previous_time or datetime.now(timezone.utc).isoformat()
+    accounts[str(target.id)] = requested
     save_accounts(accounts)
     tier = ((data or {}).get('current') or {}).get('tier') or {} if isinstance(data, dict) else {}
     is_self = target.id == interaction.user.id
