@@ -4,6 +4,7 @@ import asyncio
 
 import discord
 
+from services.ai_recap import local_matchfeed_recap
 from services.matchfeed_context import recap_context_text
 
 
@@ -67,6 +68,9 @@ async def play_match_image(detail, queued_players, all_teammates, representative
                                  detail, focus, representative, registered_only=summary_players is not None,
                                  tone=tone, recap_context=recap_context)
     fallback_context = recap_context_text(recap_context) if not recap else ""
+    if not recap and summary_players is not None:
+        recap = local_matchfeed_recap(detail, focus, representative, fallback_context)
+        fallback_context = ""
     buffer = await loop.run_in_executor(None, draw_play_result, detail, render_players, all_teammates,
                                         representative, path, recap, summary_players, tone, footer, fallback_context)
     return discord.File(buffer, filename="match.png")
