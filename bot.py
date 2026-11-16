@@ -31,7 +31,7 @@ from services.ai_recap import generate_recap
 from services.json_store import JsonStoreError, read_json
 from services.match_history import MatchHistoryService
 from services.playbook_service import PlaybookDataError, PlaybookService
-from services.google_doc_import import read_google_doc
+from services.google_sheet_import import read_google_sheet
 from services.valorant_api import HenrikDevClient
 from utils.formatting import fmt_range, parse_time
 from utils.premier_seasons import extract_premier_seasons
@@ -438,8 +438,8 @@ playbook_service = PlaybookService(PLAYBOOK_FILE)
 async def available_playbook_maps():
     return await playbook_helpers.available_playbook_maps(SETTINGS=SETTINGS)
 
-async def fetch_import_doc(link):
-    return await read_google_doc(client.http_session, link)
+async def fetch_import_sheet(link):
+    return await read_google_sheet(client.http_session, link)
 
 
 def find_playbook_map(maps, map_name):
@@ -494,7 +494,7 @@ def make_command_context() -> CommandContext:
         playbook_map_autocomplete=playbook_map_autocomplete,
         playbook_service=playbook_service,
         playbook_strategy_file=playbook_strategy_file,
-        read_google_doc=fetch_import_doc,
+        read_google_sheet=fetch_import_sheet,
         rank_change_image=rank_change_image,
         recent_scoreboard_view=recent_scoreboard_view,
         register_account=register_account,

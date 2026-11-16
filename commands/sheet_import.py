@@ -1,11 +1,11 @@
-"""Import Premier plans from a Google Doc."""
+"""Import Premier plans from a Google Sheet."""
 
 import re
 
 import discord
 
 from services.agent_helpers import find_lineup_week, week_pick_key
-from services.google_doc_import import DocImportError, TEMPLATE, parse_import_document
+from services.google_sheet_import import DocImportError, TEMPLATE, parse_import_sheet
 from services.json_store import JsonStoreError
 
 
@@ -54,21 +54,21 @@ async def _lineup_updates(lineups, guild, runtime):
     return updates
 
 
-async def import_doc(interaction, document, runtime):
+async def import_sheet(interaction, sheet, runtime):
     if not interaction.guild or not interaction.permissions.administrator:
-        return await interaction.response.send_message("Only server administrators can import a document.", ephemeral=True)
-    if not document.strip():
+        return await interaction.response.send_message("Only server administrators can import a sheet.", ephemeral=True)
+    if not sheet.strip():
         return await interaction.response.send_message(
-            "Paste a Google Docs link into /importdoc. Use a document anyone with the link can view. "
-            "You can include just lineups, just playbooks, or both. Each lineup sets the picks for that week.\n"
+            "Paste a Google Sheets link into /importsheet. Use a sheet anyone with the link can view. "
+            "Paste this template into cell A1. You can include lineups, playbooks, or both.\n"
             f"```text\n{TEMPLATE}\n```",
             ephemeral=True,
         )
     await interaction.response.defer(ephemeral=True)
     added = skipped = 0
     try:
-        text = await runtime.read_google_doc(document)
-        lineups, strategies = parse_import_document(text)
+        text = await runtime.read_google_sheet(sheet)
+        lineups, strategies = parse_import_sheet(text)
         updates = await _lineup_updates(lineups, interaction.guild, runtime) if lineups else {}
         if strategies:
             maps = await runtime.available_playbook_maps()
@@ -86,7 +86,7 @@ async def import_doc(interaction, document, runtime):
     except (DocImportError, JsonStoreError) as exc:
         message = f"Import stopped. {exc}"
         if added:
-            message += f" Saved {added} playbook strategies. You can retry the same document to save the lineups."
+            message += f" Saved {added} playbook strategies. You can retry the same sheet to save the lineups."
         return await interaction.followup.send(message[:1900], ephemeral=True,
                                                allowed_mentions=discord.AllowedMentions.none())
 

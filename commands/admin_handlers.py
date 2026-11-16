@@ -4,7 +4,7 @@ from __future__ import annotations
 HELP_SECTIONS = [
     ("Premier", ["schedule", "results", "mapresults", "scout", "agent", "lineup", "clearagent", "playbook"]),
     ("Players", ["register", "unregister", "accounts", "rank", "player", "recent", "play"]),
-    ("Server managers", ["registeruser", "assignagent", "createplaybook", "importdoc", "setschedule", "matchfeed", "matchfeed_tone", "testreminder", "testplaycard", "testrankcard", "clearcache"]),
+    ("Server managers", ["registeruser", "assignagent", "createplaybook", "importsheet", "setschedule", "matchfeed", "matchfeed_tone", "testreminder", "testplaycard", "testrankcard", "clearcache"]),
     ("Troubleshooting", ["findteam", "debug"]),
 ]
 
