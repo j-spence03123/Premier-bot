@@ -10,10 +10,7 @@ import aiohttp
 from yarl import URL
 
 
-TEMPLATE = """Lineup\tWeek 6
-Pick\tKevin#1234\tOmen
-Pick\tSpam#5678\tCypher
-Playbook\tAbyss\tAttack\tA Split
+PLAYBOOK_TEMPLATE = """Playbook\tAbyss\tAttack\tA Split
 Description\tSplit A through main and mid.
 Step\tSmoke heaven before entering from main.
 Step\tWait for the mid players before planting.
@@ -72,11 +69,31 @@ async def read_google_sheet(session, link):
     raise DocImportError("The bot couldn't open the sheet. Use a link that allows anyone with the link to view it and download it.")
 
 
-def parse_import_sheet(text):
-    lineups = []
+def parse_lineup_sheet(text, map_name):
+    rows = list(csv.reader(io.StringIO(text, newline="")))
+    headers = [(index, column) for index, row in enumerate(rows) for column, cell in enumerate(row)
+               if column >= 2 and cell.strip().casefold() == map_name.casefold()]
+    if len(headers) != 1:
+        raise DocImportError(f"Expected one column headed '{map_name}' in column C or later.")
+    header, column = headers[0]
+    picks = []
+    for number, row in enumerate(rows[header + 1:], start=header + 2):
+        agent = row[column].strip() if len(row) > column else ""
+        if not agent:
+            continue
+        player = row[1].strip()
+        if not player:
+            raise DocImportError(f"Row {number}: enter the player in column B.")
+        picks.append((player, agent))
+    if not 1 <= len(picks) <= 5:
+        raise DocImportError(f"{map_name} needs between one and five player picks.")
+    return picks
+
+
+def parse_playbook_sheet(text):
     strategies = []
-    lineup = strategy = None
-    for number, row in enumerate(csv.reader(io.StringIO(text)), start=1):
+    strategy = None
+    for number, row in enumerate(csv.reader(io.StringIO(text, newline="")), start=1):
         cells = [cell.strip() for cell in row]
         while cells and not cells[-1]:
             cells.pop()
@@ -84,27 +101,19 @@ def parse_import_sheet(text):
             continue
         kind, *values = cells
         kind = kind.casefold()
-        expected = {"lineup": 1, "pick": 2, "playbook": 3, "description": 1,
+        expected = {"playbook": 3, "description": 1,
                     "step": 1, "utility": 1, "assignment": 2, "link": 1}.get(kind)
         if expected is None or len(values) != expected or not all(values):
-            raise DocImportError(f"Row {number}: check the row type and columns against the /importsheet template.")
-        if kind in ("lineup", "playbook"):
-            lineup = strategy = None
-            if kind == "lineup":
-                lineup = []
-                lineups.append((values[0], lineup))
-            else:
-                map_name, side, name = values
-                side = side.casefold().replace("defense", "defence")
-                strategy = {"map": map_name, "side": side, "name": name,
-                            "steps": [], "links": [], "assignments": []}
-                strategies.append(strategy)
+            raise DocImportError(f"Row {number}: check the row type and columns against the /importplaybook template.")
+        if kind == "playbook":
+            map_name, side, name = values
+            side = side.casefold().replace("defense", "defence")
+            strategy = {"map": map_name, "side": side, "name": name,
+                        "steps": [], "links": [], "assignments": []}
+            strategies.append(strategy)
             continue
-        if kind == "pick" and lineup is not None:
-            lineup.append(tuple(values))
-            continue
-        if strategy is None or kind == "pick":
-            raise DocImportError(f"Row {number}: put picks under Lineup and strategy details under Playbook.")
+        if strategy is None:
+            raise DocImportError(f"Row {number}: put strategy details below a Playbook row.")
         if kind in ("description", "utility"):
             key = "objective" if kind == "description" else "utility"
             strategy[key] = "\n".join(filter(None, (strategy.get(key), values[0])))
@@ -112,8 +121,8 @@ def parse_import_sheet(text):
             strategy[kind + "s"].append(values[0])
         elif kind == "assignment":
             strategy["assignments"].append({"player": values[0], "responsibilities": values[1]})
-    if not lineups and not strategies:
-        raise DocImportError("The sheet has no lineup or playbook sections.")
-    if len(lineups) > 15 or len(strategies) > 40:
-        raise DocImportError("Import at most 15 lineups and 40 strategies in one sheet tab.")
-    return lineups, strategies
+    if not strategies:
+        raise DocImportError("The sheet has no playbook sections.")
+    if len(strategies) > 40:
+        raise DocImportError("Import at most 40 strategies in one sheet tab.")
+    return strategies

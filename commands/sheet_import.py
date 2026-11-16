@@ -1,98 +1,112 @@
-"""Import Premier plans from a Google Sheet."""
+"""Discord commands for importing lineups and playbooks from separate sheets."""
 
+import asyncio
 import re
 
 import discord
 
 from services.agent_helpers import find_lineup_week, week_pick_key
-from services.google_sheet_import import DocImportError, TEMPLATE, parse_import_sheet
+from services.google_sheet_import import (
+    DocImportError, PLAYBOOK_TEMPLATE, parse_lineup_sheet, parse_playbook_sheet,
+)
 from services.json_store import JsonStoreError
 
 
 DISCORD_ID = re.compile(r"(?:<@!?(\d{15,20})>|(\d{15,20}))")
+AGENT_ALIASES = {"brim": "brimstone", "kj": "killjoy"}
 
 
-async def _lineup_updates(lineups, guild, runtime):
-    season = runtime.load_season()
+async def _resolve_player(player, guild, accounts):
+    match = DISCORD_ID.fullmatch(player)
+    name = player.lstrip("@").casefold()
+    linked = [uid for uid, account in accounts.items()
+              if name in {str(account.get("name", "")).casefold(),
+                          f"{account.get('name', '')}#{account.get('tag', '')}".casefold()}]
+    if match:
+        uid = int(match[1] or match[2])
+    elif "#" in name and len(linked) == 1:
+        uid = int(linked[0])
+    else:
+        try:
+            members = await guild.query_members(query=player.lstrip("@"), limit=100)
+        except (asyncio.TimeoutError, discord.DiscordException, ValueError):
+            members = guild.members
+        exact = {member.id for member in members
+                 if name in {member.name.casefold(), member.display_name.casefold()}}
+        if len(exact) == 1:
+            return str(exact.pop())
+        if len(exact) > 1 or len(linked) > 1:
+            raise DocImportError(f"'{player}' matches multiple players. Use their Discord user ID in column B.")
+        if not linked:
+            raise DocImportError(f"Couldn't find '{player}'. Use a Discord name, Discord user ID, or linked Riot ID in column B.")
+        uid = int(linked[0])
+    if guild.get_member(uid) is None:
+        try:
+            await guild.fetch_member(uid)
+        except discord.NotFound as exc:
+            raise DocImportError(f"'{player}' is not a member of this server.") from exc
+        except discord.HTTPException as exc:
+            raise DocImportError("Couldn't verify the lineup players with Discord. Try again.") from exc
+    return str(uid)
+
+
+async def _lineup_picks(rows, guild, runtime):
     accounts = runtime.load_accounts()
-    players = {f"{account['name']}#{account['tag']}".casefold(): uid
-               for uid, account in accounts.items() if account.get("name") and account.get("tag")}
     agent_names = {name.casefold(): name for name in await runtime.agent_names()}
-    checked_members = set()
-    updates = {}
-    for label, rows in lineups:
-        week = find_lineup_week(season, label=label)
-        if not week:
-            raise DocImportError(f"'{label}' is not in /schedule. Use the week label or start date.")
-        key = week_pick_key(week, guild.id)
-        if key in updates:
-            raise DocImportError(f"{week['label']} appears more than once. Use one lineup section per week.")
-        if not 1 <= len(rows) <= 5:
-            raise DocImportError(f"{week['label']} needs between one and five player picks.")
-        picks = {}
-        for player, agent in rows:
-            match = DISCORD_ID.fullmatch(player)
-            user_id = next(group for group in match.groups() if group) if match else players.get(player.casefold())
-            if not user_id:
-                raise DocImportError(f"Couldn't find '{player}'. Use a linked Riot ID (Name#Tag) or a Discord user ID.")
-            uid = int(user_id)
-            if uid not in checked_members and guild.get_member(uid) is None:
-                try:
-                    await guild.fetch_member(uid)
-                except discord.NotFound as exc:
-                    raise DocImportError(f"'{player}' is not a member of this server.") from exc
-                except discord.HTTPException as exc:
-                    raise DocImportError("Couldn't verify the lineup players with Discord. Try again.") from exc
-            checked_members.add(uid)
-            canonical_agent = agent_names.get(agent.casefold())
-            if not canonical_agent:
-                raise DocImportError(f"'{agent}' isn't a known VALORANT agent.")
-            if user_id in picks or canonical_agent in picks.values():
-                raise DocImportError(f"{week['label']} has a duplicate player or agent.")
-            picks[user_id] = canonical_agent
-        updates[key] = picks
-    return updates
+    picks = {}
+    for player, agent in rows:
+        canonical_agent = agent_names.get(AGENT_ALIASES.get(agent.casefold(), agent.casefold()))
+        if not canonical_agent:
+            raise DocImportError(f"'{agent}' isn't a known VALORANT agent.")
+        user_id = await _resolve_player(player, guild, accounts)
+        if user_id in picks or canonical_agent in picks.values():
+            raise DocImportError("The lineup has a duplicate player or agent.")
+        picks[user_id] = canonical_agent
+    return picks
 
 
-async def import_sheet(interaction, sheet, runtime):
+async def import_lineup(interaction, sheet, label, runtime):
     if not interaction.guild or not interaction.permissions.administrator:
-        return await interaction.response.send_message("Only server administrators can import a sheet.", ephemeral=True)
+        return await interaction.response.send_message("Only server administrators can import lineups.", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    try:
+        week = find_lineup_week(runtime.load_season(), label=label.strip())
+        if not label.strip() or not week:
+            raise DocImportError("Use the week label or start date shown in /schedule.")
+        rows = parse_lineup_sheet(await runtime.read_google_sheet(sheet), week["map"])
+        picks = await _lineup_picks(rows, interaction.guild, runtime)
+        agents = runtime.load_agents()
+        agents[week_pick_key(week, interaction.guild.id)] = picks
+        runtime.save_agents(agents)
+    except (DocImportError, JsonStoreError) as exc:
+        return await interaction.followup.send(f"Lineup import stopped. {exc}"[:1900], ephemeral=True,
+                                               allowed_mentions=discord.AllowedMentions.none())
+    await interaction.followup.send(
+        f"Saved {len(picks)} picks for {week['label']} on {week['map']}. Open them with /lineup week:{week['label']}.",
+        ephemeral=True,
+    )
+
+
+async def import_playbook(interaction, sheet, runtime):
+    if not interaction.guild or not interaction.permissions.administrator:
+        return await interaction.response.send_message("Only server administrators can import playbooks.", ephemeral=True)
     if not sheet.strip():
         return await interaction.response.send_message(
-            "Paste a Google Sheets link into /importsheet. Use a sheet anyone with the link can view. "
-            "Paste this template into cell A1. You can include lineups, playbooks, or both.\n"
-            f"```text\n{TEMPLATE}\n```",
+            "Paste this template into cell A1 of a playbook tab, then use /importplaybook with its sharing link.\n"
+            f"```text\n{PLAYBOOK_TEMPLATE}\n```",
             ephemeral=True,
         )
     await interaction.response.defer(ephemeral=True)
-    added = skipped = 0
     try:
-        text = await runtime.read_google_sheet(sheet)
-        lineups, strategies = parse_import_sheet(text)
-        updates = await _lineup_updates(lineups, interaction.guild, runtime) if lineups else {}
-        if strategies:
-            maps = await runtime.available_playbook_maps()
-            for draft in strategies:
-                map_name = runtime.find_playbook_map(maps, draft["map"])
-                if not map_name:
-                    raise DocImportError(f"'{draft['map']}' isn't a map in /playbook.")
-                draft["map"] = map_name
-        agents = runtime.load_agents() if updates else None
-        if strategies:
-            added, skipped = runtime.playbook_service.import_strategies(strategies)
-        if updates:
-            agents.update(updates)
-            runtime.save_agents(agents)
+        strategies = parse_playbook_sheet(await runtime.read_google_sheet(sheet))
+        maps = await runtime.available_playbook_maps()
+        for draft in strategies:
+            map_name = runtime.find_playbook_map(maps, draft["map"])
+            if not map_name:
+                raise DocImportError(f"'{draft['map']}' isn't a map in /playbook.")
+            draft["map"] = map_name
+        added, skipped = runtime.playbook_service.import_strategies(strategies)
     except (DocImportError, JsonStoreError) as exc:
-        message = f"Import stopped. {exc}"
-        if added:
-            message += f" Saved {added} playbook strategies. You can retry the same sheet to save the lineups."
-        return await interaction.followup.send(message[:1900], ephemeral=True,
+        return await interaction.followup.send(f"Playbook import stopped. {exc}"[:1900], ephemeral=True,
                                                allowed_mentions=discord.AllowedMentions.none())
-
-    parts = []
-    if updates:
-        parts.append(f"Saved {len(updates)} weekly lineup(s). Choose a week in /lineup to view one.")
-    if strategies:
-        parts.append(f"Added {added} playbook strategy/strategies. {skipped} already existed.")
-    await interaction.followup.send(" ".join(parts), ephemeral=True)
+    await interaction.followup.send(f"Added {added} strategies. Skipped {skipped} identical entries.", ephemeral=True)

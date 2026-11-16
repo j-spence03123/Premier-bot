@@ -26,12 +26,19 @@ python bot.py
 
 ## Import lineups and playbooks from Google Sheets
 
-Server administrators can run `/importsheet` without a link to see the template. Paste it into cell **A1** in Google Sheets, set sharing to **Anyone with the link → Viewer** with downloads allowed, then paste that tab's link into `/importsheet sheet:`.
+Both commands require server administrator permissions and a sheet shared as **Anyone with the link → Viewer** with downloads allowed.
+
+### Lineup
+
+Run `/importlineup sheet:<tab link> week:<week label or start date>`. Use column B for player names and columns C onward for maps. Put each map name above its agent picks. Blank rows above the map headings are fine.
+
+Players can be identified by an exact Discord name or nickname, a Discord user ID, or a linked Riot ID. The bot reads the map for that week from `/schedule` and saves its picks. Reimporting replaces that week's picks. Use `/lineup week:` to view them.
+
+### Playbook
+
+Run `/importplaybook` without a link to see the template. Paste it into cell **A1** of a playbook tab, then run `/importplaybook sheet:<tab link>`.
 
 ```text
-Lineup	Week 6
-Pick	Kevin#1234	Omen
-Pick	Spam#5678	Cypher
 Playbook	Abyss	Attack	A Split
 Description	Split A through main and mid.
 Step	Smoke heaven before entering from main.
@@ -41,7 +48,4 @@ Assignment	Kevin	Smoke heaven and call the execute.
 Link	https://example.com/reference
 ```
 
-- Use a week label or start date from `/schedule`. Identify players by a Riot ID linked through `/register` or by their Discord user ID.
-- Each lineup section sets the picks for that week. Open it with `/lineup week:`, or run `/lineup` when that week is current.
-- A playbook section creates one strategy under its map and side in `/playbook`. Identical strategies are skipped. To change a strategy with the same name, use `/createplaybook`.
-- The bot reads the linked tab when you run the import. Run it again to apply later edits to a lineup.
+Each Playbook row starts a strategy under its map and side in `/playbook`. Identical strategies are skipped. To change an existing strategy, use `/createplaybook`.
