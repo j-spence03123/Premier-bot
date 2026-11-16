@@ -2,7 +2,7 @@
 
 import asyncio
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import io
 from urllib.parse import quote
 from zoneinfo import ZoneInfoNotFoundError
@@ -10,7 +10,8 @@ from zoneinfo import ZoneInfoNotFoundError
 import discord
 
 from services.json_store import JsonStoreError
-from services.matchfeed import format_match_notification, group_registered_players
+from services.matchfeed import format_match_notification, group_registered_players, next_matchfeed_counts
+from services.matchfeed_context import matchfeed_recap_context
 from utils.recap_tones import normalize_tone
 
 
@@ -180,6 +181,8 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                     entry["user_ids"].add(str(user_id))
 
                 candidates = {}
+                histories = {}
+                rank_histories = {}
                 request_count = 0
                 for riot_key, entry in linked.items():
                     account = entry["account"]
@@ -233,6 +236,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                     except Exception as exc:
                         print(f"Match feed history failed for {account['name']}#{account['tag']}: {exc}")
                         history = []
+                    histories[riot_key] = history or []
                     for item in history or []:
                         meta = item.get("meta") or {}
                         match_id = meta.get("id")
@@ -262,7 +266,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                     member_cache[cache_key] = member
                     return member
 
-                for match_id, candidate in candidates.items():
+                for match_id, candidate in sorted(candidates.items(), key=lambda item: item[1]["started"]):
                     eligible_feeds = []
                     for guild_key, feed in feeds.items():
                         seen = {str(mid) for mid in feed.get("seen", [])}
@@ -341,15 +345,38 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                                                registered_players, all_team_players, result_word, score))
 
                     if notify_targets:
+                        started = candidate["started"]
+                        duration_ms = (detail.get("metadata") or {}).get("game_length_in_ms") or 0
+                        finished = started + timedelta(milliseconds=duration_ms)
                         cards_by_roster = {}
                         for guild_key, feed, channel, mentions, team_id, registered_players, all_team_players, result_word, score in notify_targets:
                             try:
                                 tone = normalize_tone(feed.get("tone"))
-                                roster_key = (team_id, tuple(p.get("puuid") for p in registered_players), tone)
+                                counts, footer = next_matchfeed_counts(feed, registered_players, started, finished)
+                                roster_key = (team_id, tuple(p.get("puuid") for p in registered_players), tone, footer)
                                 if roster_key not in cards_by_roster:
+                                    for player in registered_players:
+                                        key = f"{player['name']}#{player['tag']}".casefold()
+                                        if key in rank_histories:
+                                            continue
+                                        account = linked[key]["account"]
+                                        region = account.get("region") or AFFINITY
+                                        await asyncio.sleep(2.3)
+                                        try:
+                                            rank_history = await cached_api(
+                                                f"/valorant/v1/mmr-history/{region}/{quote(account['name'])}/{quote(account['tag'])}",
+                                                240,
+                                            )
+                                            rank_histories[key] = rank_history if isinstance(rank_history, list) else []
+                                        except Exception as exc:
+                                            print(f"Match feed rank history failed for {account['name']}#{account['tag']}: {exc}")
+                                            rank_histories[key] = []
+                                    recap_context = matchfeed_recap_context(
+                                        registered_players, match_id, started, finished, histories, rank_histories,
+                                    )
                                     card = await play_match_image(detail, registered_players, all_team_players,
                                                                   registered_players[0], summary_players=registered_players,
-                                                                  tone=tone)
+                                                                  tone=tone, footer=footer, recap_context=recap_context)
                                     cards_by_roster[roster_key] = card.fp.getvalue()
                                 await channel.send(
                                     content=format_match_notification(
@@ -361,6 +388,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                             except discord.HTTPException as exc:
                                 print(f"Could not post match feed {match_id} in guild {guild_key}: {exc}")
                                 continue
+                            feed["match_counts"] = counts
                             feed["seen"] = (list(feed.get("seen", [])) + [str(match_id)])[-1000:]
                             save_matchfeed_progress(feeds, guild_key)
 

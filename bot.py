@@ -351,10 +351,11 @@ async def matchfeed_loop():
     )
 
 
-async def play_match_image(detail, queued_players, all_teammates, representative, summary_players=None, tone="no_filter"):
+async def play_match_image(detail, queued_players, all_teammates, representative, summary_players=None, tone="no_filter", *, footer=None, recap_context=None):
     return await match_images.play_match_image(
         detail, queued_players, all_teammates, representative, summary_players, tone,
-        map_background_path=map_background_path, icon_maps=icon_maps, icon_img=icon_img,
+        footer=footer, recap_context=recap_context, map_background_path=map_background_path,
+        icon_maps=icon_maps, icon_img=icon_img,
         session=client.http_session, api_key=SETTINGS.groq_api_key, model=SETTINGS.groq_model,
         generate_recap=generate_recap, draw_play_result=draw_play_result,
     )

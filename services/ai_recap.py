@@ -75,10 +75,21 @@ def recap_facts(detail, teammates, representative, registered_only=False):
     }
 
 
-async def generate_recap(session, api_key, model, detail, teammates, representative, registered_only=False, tone="no_filter"):
+async def generate_recap(session, api_key, model, detail, teammates, representative, registered_only=False, tone="no_filter", recap_context=None):
     if not api_key:
         logger.warning("AI recap disabled: GROQ_API_KEY is not set; using local recap")
         return None
+    facts = recap_facts(detail, teammates, representative, registered_only=registered_only)
+    context_prompt = ""
+    if recap_context:
+        facts["recent_competitive_context"] = recap_context
+        context_prompt = (
+            " Connect this match to one or two relevant facts from recent_competitive_context. "
+            "Favor a recent rank change, a reversal of yesterday's results, or a streak extended or broken. "
+            "Daily records cover only the available prior games, and streaks are measured entering the match. "
+            "Describe a promotion or demotion only as recorded in rank_changes and keep its timing exact. "
+            "A bad game after a promotion does not imply a demotion. Keep the current match central."
+        )
     payload = {
         "model": model,
         "messages": [{"role": "system", "content": (
@@ -94,9 +105,9 @@ async def generate_recap(session, api_key, model, detail, teammates, representat
             + (" Only discuss named players listed in teammates. Never name, describe, or evaluate "
                "any other individual player. Rankings are only among the listed players, not the entire team."
                if registered_only else "")
+            + context_prompt
         )}, {"role": "user", "content": json.dumps(
-            recap_facts(detail, teammates, representative, registered_only=registered_only),
-            ensure_ascii=False, separators=(",", ":")
+            facts, ensure_ascii=False, separators=(",", ":")
         )}],
         "max_completion_tokens": 600,
         "response_format": {"type": "json_object"},

@@ -70,7 +70,7 @@ def match_font(size, bold=False, serif=False):
         return font(size, bold=bold, serif=serif)
 
 
-def draw_soft_box(image, box, fill, opacity=224, radius=4):
+def draw_soft_box(image, box, fill, opacity=224, radius=4, *, outline=None):
     """Draw a lightly transparent, antialiased chip on an existing RGB image."""
     left, top, right, bottom = box
     width, height = right - left, bottom - top
@@ -80,6 +80,8 @@ def draw_soft_box(image, box, fill, opacity=224, radius=4):
         (0, 0, width * scale - 1, height * scale - 1),
         radius=radius * scale,
         fill=(*fill, opacity),
+        outline=outline,
+        width=2 * scale,
     )
     layer = layer.resize((width, height), Image.Resampling.LANCZOS)
     base = image.crop((left, top, right, bottom)).convert("RGBA")

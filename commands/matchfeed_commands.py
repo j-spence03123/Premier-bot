@@ -54,6 +54,7 @@ async def matchfeed_cmd(interaction: discord.Interaction, channel: discord.TextC
             "started_at": datetime.now(timezone.utc).isoformat(),
             "seen": [],
             "tone": normalize_tone(existing.get("tone")),
+            "match_counts": existing.get("match_counts", {}),
         }
     else:
         existing["channel_id"] = channel.id

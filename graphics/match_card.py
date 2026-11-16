@@ -24,7 +24,7 @@ def _assign_unique_tags(tracked):
         item["tags"] = tags
 
 
-def draw_play_result(detail, queued_players, all_teammates, representative, map_path, ai_recap=None, summary_players=None, tone="no_filter"):
+def draw_play_result(detail, queued_players, all_teammates, representative, map_path, ai_recap=None, summary_players=None, tone="no_filter", footer=None, fallback_context=""):
     meta = detail.get("metadata", {})
     teams = {t.get("team_id"): t for t in detail.get("teams", [])}
     team = teams.get(representative.get("team_id"), {})
@@ -116,6 +116,8 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     focus_ids = {p.get("puuid") for p in focus if p.get("puuid")}
     summary_tracked = [item for item in tracked if item["p"].get("puuid") in focus_ids] if registered_only else tracked
     recap = (ai_recap or {}).get("recap") or _play_recap(map_name, won, our_score, their_score, summary_tracked, focus, duration, detail, registered_only, tone)
+    if fallback_context:
+        recap += " " + fallback_context
     headline = ((ai_recap or {}).get("headline") or _play_headline(focus, our_score, their_score, registered_only, tone)).upper()
     recap_font = match_font(23)
     measure_draw = ImageDraw.Draw(Image.new("RGB", (width, 1)))
@@ -138,7 +140,8 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     card_h = 208 + (max_tag_rows - 1) * 28
     rows = max(1, (len(tracked) + columns - 1) // columns)
     cards_top = hero_h + summary_h + 22
-    height = cards_top + rows * (card_h + gap) - gap + 26
+    cards_bottom = cards_top + rows * (card_h + gap) - gap
+    height = cards_bottom + (66 if footer else 26)
     image = Image.new("RGB", (width, height), (17, 17, 22))
     draw = ImageDraw.Draw(image)
     if map_path and Path(map_path).exists():
@@ -218,7 +221,8 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
             tag_key = tag.split(" x", 1)[0]
             tag_colour, tag_text = PLAY_TAG_STYLES.get(tag_key, ((68, 68, 78), (235, 235, 240)))
             tag_y = y + 54 + tag_row * 32
-            draw_soft_box(image, (tx, tag_y, tx + tw, tag_y + 30), tag_colour, opacity=222, radius=3)
+            draw_soft_box(image, (tx, tag_y, tx + tw, tag_y + 30), tag_colour,
+                          opacity=88, radius=5, outline=(*tag_text, 105))
             text_bbox = tag_font.getbbox(tag, anchor="mm")
             text_center_offset = (text_bbox[1] + text_bbox[3]) / 2
             draw.text((tx + tw / 2, tag_y + 15 - text_center_offset),
@@ -238,6 +242,14 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
         draw.text(((x + right) // 2, subtext_y),
                   f"HS {item['hs']}% | FB {item['fb']} | FD {item['fd']}",
                   font=match_font(15), fill=(155, 152, 161), anchor="mm")
+    if footer:
+        footer_left, footer_right = footer
+        footer_y = height - 25
+        footer_font = match_font(19)
+        footer_color = (173, 170, 180)
+        draw.line((side_pad, cards_bottom + 16, width - side_pad, cards_bottom + 16), fill=(42, 40, 45))
+        draw.text((side_pad, footer_y), footer_left, font=footer_font, fill=footer_color, anchor="lm")
+        draw.text((width - side_pad, footer_y), footer_right, font=footer_font, fill=footer_color, anchor="rm")
     buffer = io.BytesIO()
     image.save(buffer, "PNG")
     buffer.seek(0)

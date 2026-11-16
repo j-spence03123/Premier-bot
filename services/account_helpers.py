@@ -16,7 +16,7 @@ def resolve_player(caller, member, name, tag, region, *, load_accounts, split_ri
     return (acc['name'], acc['tag'], region or acc.get('region', ''))
 
 def save_matchfeed_progress(snapshot, guild_key, *, load_matchfeeds, save_matchfeeds):
-    """Merge a poller's `seen` update without replacing newer admin settings."""
+    """Merge match progress without replacing newer admin settings."""
     updated = snapshot.get(guild_key)
     latest = load_matchfeeds()
     current = latest.get(guild_key)
@@ -25,5 +25,7 @@ def save_matchfeed_progress(snapshot, guild_key, *, load_matchfeeds, save_matchf
     if (current.get('channel_id'), current.get('started_at')) != (updated.get('channel_id'), updated.get('started_at')):
         return False
     current['seen'] = list(updated.get('seen', []))
+    if 'match_counts' in updated:
+        current['match_counts'] = updated['match_counts']
     save_matchfeeds(latest)
     return True

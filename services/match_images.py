@@ -4,8 +4,10 @@ import asyncio
 
 import discord
 
+from services.matchfeed_context import recap_context_text
 
-async def play_match_image(detail, queued_players, all_teammates, representative, summary_players=None, tone="no_filter", *, map_background_path, icon_maps, icon_img, session, api_key, model, generate_recap, draw_play_result):
+
+async def play_match_image(detail, queued_players, all_teammates, representative, summary_players=None, tone="no_filter", *, footer=None, recap_context=None, map_background_path, icon_maps, icon_img, session, api_key, model, generate_recap, draw_play_result):
     map_data = (detail.get("metadata", {}).get("map") or {})
     map_uuid = map_data.get("id") or map_data.get("uuid")
     map_name = map_data.get("name", "Unknown")
@@ -62,9 +64,11 @@ async def play_match_image(detail, queued_players, all_teammates, representative
     loop = asyncio.get_running_loop()
     focus = summary_players if summary_players is not None else all_teammates
     recap = await generate_recap(session, api_key, model,
-                                 detail, focus, representative, registered_only=summary_players is not None, tone=tone)
+                                 detail, focus, representative, registered_only=summary_players is not None,
+                                 tone=tone, recap_context=recap_context)
+    fallback_context = recap_context_text(recap_context) if not recap else ""
     buffer = await loop.run_in_executor(None, draw_play_result, detail, render_players, all_teammates,
-                                        representative, path, recap, summary_players, tone)
+                                        representative, path, recap, summary_players, tone, footer, fallback_context)
     return discord.File(buffer, filename="match.png")
 
 
