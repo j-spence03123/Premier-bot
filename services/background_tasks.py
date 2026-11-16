@@ -352,7 +352,9 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                         for guild_key, feed, channel, mentions, team_id, registered_players, all_team_players, result_word, score in notify_targets:
                             try:
                                 tone = normalize_tone(feed.get("tone"))
-                                counts, footer = next_matchfeed_counts(feed, registered_players, started, finished)
+                                counts, footer = next_matchfeed_counts(
+                                    feed, registered_players, match_id, started, finished, histories,
+                                )
                                 roster_key = (team_id, tuple(p.get("puuid") for p in registered_players), tone, footer)
                                 if roster_key not in cards_by_roster:
                                     for player in registered_players:

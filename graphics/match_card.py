@@ -141,7 +141,9 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     rows = max(1, (len(tracked) + columns - 1) // columns)
     cards_top = hero_h + summary_h + 22
     cards_bottom = cards_top + rows * (card_h + gap) - gap
-    height = cards_bottom + (66 if footer else 26)
+    footer_line_gap = 24
+    footer_height = 66 + (len(footer[1]) - 1) * footer_line_gap if footer else 26
+    height = cards_bottom + footer_height
     image = Image.new("RGB", (width, height), (17, 17, 22))
     draw = ImageDraw.Draw(image)
     if map_path and Path(map_path).exists():
@@ -243,13 +245,15 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
                   f"HS {item['hs']}% | FB {item['fb']} | FD {item['fd']}",
                   font=match_font(15), fill=(155, 152, 161), anchor="mm")
     if footer:
-        footer_left, footer_right = footer
+        footer_left, right_lines = footer
         footer_y = height - 25
         footer_font = match_font(19)
         footer_color = (173, 170, 180)
         draw.line((side_pad, cards_bottom + 16, width - side_pad, cards_bottom + 16), fill=(42, 40, 45))
         draw.text((side_pad, footer_y), footer_left, font=footer_font, fill=footer_color, anchor="lm")
-        draw.text((width - side_pad, footer_y), footer_right, font=footer_font, fill=footer_color, anchor="rm")
+        for index, line in enumerate(reversed(right_lines)):
+            draw.text((width - side_pad, footer_y - index * footer_line_gap), line,
+                      font=footer_font, fill=footer_color, anchor="rm")
     buffer = io.BytesIO()
     image.save(buffer, "PNG")
     buffer.seek(0)
