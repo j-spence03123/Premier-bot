@@ -1,5 +1,6 @@
 """Feature helpers with explicitly supplied application dependencies."""
 import discord
+from services.agent_helpers import pick_storage_key
 
 async def discord_display_name(guild, user_id, *, client):
     member = guild.get_member(user_id) if guild else None
@@ -13,7 +14,7 @@ async def discord_display_name(guild, user_id, *, client):
             pass
     return 'Former server member'
 
-async def build_lineup_reminder(title, intro, guild=None, *, current_week, discord_display_name, fmt_range, lineup_card_file, load_agents, matching_map_key):
+async def build_lineup_reminder(title, intro, guild=None, *, current_week, discord_display_name, fmt_range, lineup_card_file, load_agents):
     embed = discord.Embed(title=title, description=intro, colour=16729685)
     week = current_week()
     if not week:
@@ -21,7 +22,7 @@ async def build_lineup_reminder(title, intro, guild=None, *, current_week, disco
         return (embed, [], None)
     map_name = week['map']
     data = load_agents()
-    picks = data.get(matching_map_key(data, map_name), {})
+    picks = data.get(pick_storage_key(data, map_name, week, guild.id if guild else None), {})
     picked_user_ids = []
     lines = []
     slots = []

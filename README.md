@@ -23,3 +23,26 @@ Start the bot from the repository directory:
 ```bash
 python bot.py
 ```
+
+## Import lineups and playbooks from Google Docs
+
+Server administrators can run `/importdoc` without a link to see the template. Make a Google Doc with one or more sections, set its sharing to **Anyone with the link → Viewer** with downloads allowed, then paste the link into `/importdoc document:`.
+
+```text
+[Lineup: Week 6]
+Kevin#1234 = Omen
+Spam#5678 = Cypher
+
+[Playbook: Abyss | Attack | A Split]
+Description: Split A through main and mid.
+Step: Smoke heaven before entering from main.
+Step: Wait for the mid players to reach site before planting.
+Utility: Save one smoke for the retake.
+Assignment: Kevin | Smoke heaven and call the execute.
+Link: https://example.com/reference
+```
+
+- Use a week label or start date from `/schedule`. Identify players by a Riot ID linked through `/register` or by their Discord user ID.
+- Each lineup section sets the picks for that week. Open it with `/lineup week:`, or run `/lineup` when that week is current.
+- A playbook section creates one strategy under its map and side in `/playbook`. Identical strategies are skipped. To change a strategy with the same name, use `/createplaybook`.
+- The bot reads the document when you run the import. Run it again to apply later edits to a lineup.

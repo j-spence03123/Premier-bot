@@ -6,12 +6,19 @@ from commands.context import CommandContext
 from utils.recap_tones import TONE_LABELS
 
 from commands import admin_handlers
+from commands import doc_import
 from commands import premier_handlers
 from graphics.help_card import render_help_card
 
 class AdministrationCog(commands.Cog):
     def __init__(self, runtime: CommandContext):
         self.runtime = runtime
+
+    @app_commands.command(name='importdoc', description='Import Premier lineups and playbooks from a Google Doc')
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.describe(document='Google Docs sharing link (leave blank to see the template)')
+    async def import_doc(self, interaction: discord.Interaction, document: str = ""):
+        return await doc_import.import_doc(interaction, document, self.runtime)
 
     @app_commands.command(name='clearcache', description='Force fresh data on the next command')
     @app_commands.default_permissions(manage_guild=True)

@@ -41,11 +41,11 @@ class CommandContext:
     load_summaries: Callable[..., Any]
     map_autocomplete: Callable[..., Any]
     match_detail: Callable[..., Any]
-    matching_map_key: Callable[..., Any]
     play_match_image: Callable[..., Any]
     playbook_map_autocomplete: Callable[..., Any]
     playbook_service: PlaybookService
     playbook_strategy_file: Callable[..., Any]
+    read_google_doc: Callable[..., Any]
     rank_change_image: Callable[..., Any]
     recent_scoreboard_view: Callable[..., Any]
     register_account: Callable[..., Any]

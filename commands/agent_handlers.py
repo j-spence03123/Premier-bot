@@ -1,6 +1,7 @@
 """Feature command implementations; application dependencies are injected at registration."""
 from __future__ import annotations
 import discord
+from services.agent_helpers import find_lineup_week, pick_storage_key
 
 async def agent_cmd(interaction, agent_name, map_name='', *, NO_MAP, agent_names, assign_agent, resolve_map):
     agent = next((n for n in await agent_names() if n.lower() == agent_name.strip().lower()), None)
@@ -9,7 +10,7 @@ async def agent_cmd(interaction, agent_name, map_name='', *, NO_MAP, agent_names
     picked_map = resolve_map(map_name)
     if not picked_map:
         return await interaction.response.send_message(NO_MAP, ephemeral=True)
-    conflict, count = assign_agent(picked_map, interaction.user.id, agent)
+    conflict, count = assign_agent(picked_map, interaction.user.id, agent, guild_id=interaction.guild_id)
     if conflict:
         return await interaction.response.send_message(conflict, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
     await interaction.response.send_message(f'{interaction.user.mention} will play **{agent}** on **{picked_map}**. ({count} picked, /lineup to see everyone)', allowed_mentions=discord.AllowedMentions.none())
@@ -23,20 +24,25 @@ async def assignagent(interaction, user, agent_name, map_name='', *, NO_MAP, age
     picked_map = resolve_map(map_name)
     if not picked_map:
         return await interaction.response.send_message(NO_MAP, ephemeral=True)
-    conflict, count = assign_agent(picked_map, user.id, agent)
+    conflict, count = assign_agent(picked_map, user.id, agent, guild_id=interaction.guild_id)
     if conflict:
         return await interaction.response.send_message(conflict, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
     await interaction.response.send_message(f'Assigned **{agent}** to {user.mention} on **{picked_map}**. ({count} picked, /lineup to see everyone)', ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
 
-async def lineup(interaction, map_name='', *, NO_MAP, discord_display_name, fmt_range, lineup_card_file, load_agents, load_season, matching_map_key, resolve_map):
-    picked_map = resolve_map(map_name)
+async def lineup(interaction, map_name='', week_label='', *, NO_MAP, discord_display_name, fmt_range, lineup_card_file, load_agents, load_season, resolve_map):
+    season = load_season()
+    week = find_lineup_week(season, map_name=map_name, label=week_label)
+    if week_label and not week:
+        return await interaction.response.send_message("Week not found. Use a week label or start date from /schedule.", ephemeral=True)
+    if week_label and map_name and week["map"].casefold() != map_name.strip().casefold():
+        return await interaction.response.send_message(f"{week['label']} is scheduled on {week['map']}.", ephemeral=True)
+    picked_map = week["map"] if week else resolve_map(map_name)
     if not picked_map:
         return await interaction.response.send_message(NO_MAP, ephemeral=True)
     if not interaction.response.is_done():
         await interaction.response.defer()
     agent_data = load_agents()
-    picks = agent_data.get(matching_map_key(agent_data, picked_map), {})
-    week = next((w for w in (load_season() or {}).get('weeks', []) if w['map'].casefold() == picked_map.casefold()), None)
+    picks = agent_data.get(pick_storage_key(agent_data, picked_map, week, interaction.guild_id), {})
     week_label = f"{week['label']} · {fmt_range(week['start'], week['end'])}" if week else 'Premier lineup'
     slots = []
     lines = []
@@ -61,12 +67,14 @@ async def lineup(interaction, map_name='', *, NO_MAP, discord_display_name, fmt_
     embed.set_footer(text=f'{picked_count}/5 agent picks · Use /agent to pick or change your agent')
     await interaction.followup.send(embed=embed, file=lineup_file, allowed_mentions=discord.AllowedMentions.none())
 
-async def clearagent(interaction, map_name='', *, NO_MAP, load_agents, resolve_map, save_agents):
+async def clearagent(interaction, map_name='', *, NO_MAP, load_agents, load_season, resolve_map, save_agents):
     picked_map = resolve_map(map_name)
     if not picked_map:
         return await interaction.response.send_message(NO_MAP, ephemeral=True)
     data = load_agents()
-    if data.get(picked_map, {}).pop(str(interaction.user.id), None) is None:
+    week = find_lineup_week(load_season(), map_name=picked_map)
+    key = pick_storage_key(data, picked_map, week, interaction.guild_id)
+    if data.get(key, {}).pop(str(interaction.user.id), None) is None:
         return await interaction.response.send_message(f"You hadn't picked an agent for {picked_map}.", ephemeral=True)
     save_agents(data)
     await interaction.response.send_message(f'Cleared your pick for {picked_map}.', ephemeral=True)

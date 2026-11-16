@@ -31,6 +31,7 @@ from services.ai_recap import generate_recap
 from services.json_store import JsonStoreError, read_json
 from services.match_history import MatchHistoryService
 from services.playbook_service import PlaybookDataError, PlaybookService
+from services.google_doc_import import read_google_doc
 from services.valorant_api import HenrikDevClient
 from utils.formatting import fmt_range, parse_time
 from utils.premier_seasons import extract_premier_seasons
@@ -269,7 +270,7 @@ async def discord_display_name(guild, user_id):
 
 
 async def build_lineup_reminder(title, intro, guild=None):
-    return await discord_helpers.build_lineup_reminder(title, intro, guild, current_week=current_week, discord_display_name=discord_display_name, fmt_range=fmt_range, lineup_card_file=lineup_card_file, load_agents=load_agents, matching_map_key=matching_map_key)
+    return await discord_helpers.build_lineup_reminder(title, intro, guild, current_week=current_week, discord_display_name=discord_display_name, fmt_range=fmt_range, lineup_card_file=lineup_card_file, load_agents=load_agents)
 
 
 async def queue_reminder_loop():
@@ -406,12 +407,10 @@ load_agents = state.load_agents
 save_agents = state.save_agents
 
 
-def matching_map_key(data, map_name):
-    return agent_helpers.matching_map_key(data, map_name)
-
-
-def assign_agent(map_name, user_id, agent):
-    return agent_helpers.assign_agent(map_name, user_id, agent, load_agents=load_agents, matching_map_key=matching_map_key, save_agents=save_agents)
+def assign_agent(map_name, user_id, agent, *, guild_id=None):
+    week = agent_helpers.find_lineup_week(load_season(), map_name=map_name)
+    return agent_helpers.assign_agent(map_name, user_id, agent, load_agents=load_agents,
+                                      save_agents=save_agents, week=week, guild_id=guild_id)
 
 
 def current_week():
@@ -438,6 +437,9 @@ playbook_service = PlaybookService(PLAYBOOK_FILE)
 
 async def available_playbook_maps():
     return await playbook_helpers.available_playbook_maps(SETTINGS=SETTINGS)
+
+async def fetch_import_doc(link):
+    return await read_google_doc(client.http_session, link)
 
 
 def find_playbook_map(maps, map_name):
@@ -488,11 +490,11 @@ def make_command_context() -> CommandContext:
         load_summaries=load_summaries,
         map_autocomplete=map_autocomplete,
         match_detail=match_detail,
-        matching_map_key=matching_map_key,
         play_match_image=play_match_image,
         playbook_map_autocomplete=playbook_map_autocomplete,
         playbook_service=playbook_service,
         playbook_strategy_file=playbook_strategy_file,
+        read_google_doc=fetch_import_doc,
         rank_change_image=rank_change_image,
         recent_scoreboard_view=recent_scoreboard_view,
         register_account=register_account,

@@ -24,14 +24,14 @@ class AgentsCog(commands.Cog):
         return await agent_handlers.assignagent(interaction, user, agent_name, map_name, NO_MAP=self.runtime.NO_MAP, agent_names=self.runtime.agent_names, assign_agent=self.runtime.assign_agent, resolve_map=self.runtime.resolve_map)
 
     @app_commands.command(name='lineup', description='See the team lineup and agent icons for a map')
-    @app_commands.describe(map_name='Map (default: the current or next map)')
-    async def lineup(self, interaction: discord.Interaction, map_name: str=''):
-        return await agent_handlers.lineup(interaction, map_name, NO_MAP=self.runtime.NO_MAP, discord_display_name=self.runtime.discord_display_name, fmt_range=fmt_range, lineup_card_file=self.runtime.lineup_card_file, load_agents=self.runtime.load_agents, load_season=self.runtime.load_season, matching_map_key=self.runtime.matching_map_key, resolve_map=self.runtime.resolve_map)
+    @app_commands.describe(map_name='Map (default: the current or next map)', week='Week label or start date from /schedule')
+    async def lineup(self, interaction: discord.Interaction, map_name: str='', week: str=''):
+        return await agent_handlers.lineup(interaction, map_name, week, NO_MAP=self.runtime.NO_MAP, discord_display_name=self.runtime.discord_display_name, fmt_range=fmt_range, lineup_card_file=self.runtime.lineup_card_file, load_agents=self.runtime.load_agents, load_season=self.runtime.load_season, resolve_map=self.runtime.resolve_map)
 
     @app_commands.command(name='clearagent', description='Remove your agent pick for a map')
     @app_commands.describe(map_name='Map (default: the current or next map)')
     async def clearagent(self, interaction: discord.Interaction, map_name: str=''):
-        return await agent_handlers.clearagent(interaction, map_name, NO_MAP=self.runtime.NO_MAP, load_agents=self.runtime.load_agents, resolve_map=self.runtime.resolve_map, save_agents=self.runtime.save_agents)
+        return await agent_handlers.clearagent(interaction, map_name, NO_MAP=self.runtime.NO_MAP, load_agents=self.runtime.load_agents, load_season=self.runtime.load_season, resolve_map=self.runtime.resolve_map, save_agents=self.runtime.save_agents)
 
     @agent_cmd.autocomplete("agent_name")
     @assignagent.autocomplete("agent_name")

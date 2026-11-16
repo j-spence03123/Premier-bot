@@ -178,6 +178,35 @@ class PlaybookService:
             write_json(self.path, validate_store(data))
             return copy.deepcopy(strategy)
 
+    def import_strategies(self, drafts):
+        """Validate and save a document's strategies in one write."""
+        clean_drafts = [validate_draft(draft) for draft in drafts]
+        added = skipped = 0
+        with self._store() as data:
+            existing = {
+                (row["map"].casefold(), row["side"], row["name"].casefold()): row
+                for row in data["strategies"]
+            }
+            now = datetime.now(timezone.utc).isoformat()
+            for clean in clean_drafts:
+                key = (clean["map"].casefold(), clean["side"], clean["name"].casefold())
+                current = existing.get(key)
+                if current:
+                    if any(current.get(field) != value for field, value in clean.items()):
+                        raise PlaybookDataError(
+                            f"{clean['map']} · {clean['name']} already exists with different content. "
+                            "Rename the imported strategy or edit the existing one in /createplaybook."
+                        )
+                    skipped += 1
+                    continue
+                strategy = Strategy(id=uuid.uuid4().hex, created_at=now, updated_at=now, **clean).to_dict()
+                data["strategies"].append(strategy)
+                existing[key] = strategy
+                added += 1
+            if added:
+                write_json(self.path, validate_store(data))
+        return added, skipped
+
     def update(self, strategy_id, expected_revision, draft, image_bytes=None):
         with self._store() as data:
             current = next((s for s in data["strategies"] if s["id"] == strategy_id), None)
