@@ -14,11 +14,11 @@ class AdministrationCog(commands.Cog):
     def __init__(self, runtime: CommandContext):
         self.runtime = runtime
 
-    @app_commands.command(name='importlineup', description='Import one Premier week from a lineup sheet')
+    @app_commands.command(name='importlineup', description='Import all scheduled Premier lineups from a Google Sheet')
     @app_commands.default_permissions(administrator=True)
-    @app_commands.describe(sheet='Google Sheets tab link', week='Week label or start date from /schedule')
-    async def import_lineup(self, interaction: discord.Interaction, sheet: str, week: str):
-        return await sheet_import.import_lineup(interaction, sheet, week, self.runtime)
+    @app_commands.describe(sheet='Google Sheets tab link')
+    async def import_lineup(self, interaction: discord.Interaction, sheet: str):
+        return await sheet_import.import_lineup(interaction, sheet, self.runtime)
 
     @app_commands.command(name='importplaybook', description='Import strategies from a Google Sheet')
     @app_commands.default_permissions(administrator=True)

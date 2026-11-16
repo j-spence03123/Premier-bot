@@ -5,7 +5,7 @@ import re
 
 import discord
 
-from services.agent_helpers import find_lineup_week, week_pick_key
+from services.agent_helpers import week_pick_key
 from services.google_sheet_import import (
     DocImportError, PLAYBOOK_TEMPLATE, parse_lineup_sheet, parse_playbook_sheet,
 )
@@ -50,41 +50,64 @@ async def _resolve_player(player, guild, accounts):
     return str(uid)
 
 
-async def _lineup_picks(rows, guild, runtime):
-    accounts = runtime.load_accounts()
-    agent_names = {name.casefold(): name for name in await runtime.agent_names()}
+async def _lineup_picks(rows, guild, accounts, agent_names, resolved_players):
     picks = {}
     for player, agent in rows:
         canonical_agent = agent_names.get(AGENT_ALIASES.get(agent.casefold(), agent.casefold()))
         if not canonical_agent:
             raise DocImportError(f"'{agent}' isn't a known VALORANT agent.")
-        user_id = await _resolve_player(player, guild, accounts)
+        key = player.casefold()
+        if key not in resolved_players:
+            resolved_players[key] = await _resolve_player(player, guild, accounts)
+        user_id = resolved_players[key]
         if user_id in picks or canonical_agent in picks.values():
             raise DocImportError("The lineup has a duplicate player or agent.")
         picks[user_id] = canonical_agent
     return picks
 
 
-async def import_lineup(interaction, sheet, label, runtime):
+async def import_lineup(interaction, sheet, runtime):
     if not interaction.guild or not interaction.permissions.administrator:
         return await interaction.response.send_message("Only server administrators can import lineups.", ephemeral=True)
     await interaction.response.defer(ephemeral=True)
     try:
-        week = find_lineup_week(runtime.load_season(), label=label.strip())
-        if not label.strip() or not week:
-            raise DocImportError("Use the week label or start date shown in /schedule.")
-        rows = parse_lineup_sheet(await runtime.read_google_sheet(sheet), week["map"])
-        picks = await _lineup_picks(rows, interaction.guild, runtime)
+        weeks = (runtime.load_season() or {}).get("weeks", [])
+        if not weeks:
+            raise DocImportError("No Premier weeks are configured in /schedule.")
+        text = await runtime.read_google_sheet(sheet)
+        accounts = runtime.load_accounts()
+        agent_names = {name.casefold(): name for name in await runtime.agent_names()}
+        resolved_players = {}
+        map_picks = {}
+        updates = {}
+        imported, skipped = [], []
+        for week in weeks:
+            map_name = week["map"]
+            if map_name not in map_picks:
+                rows = parse_lineup_sheet(text, map_name)
+                map_picks[map_name] = (
+                    await _lineup_picks(rows, interaction.guild, accounts, agent_names, resolved_players)
+                    if rows is not None else None
+                )
+            picks = map_picks[map_name]
+            label = f"{week['label']} ({map_name})"
+            if picks is None:
+                skipped.append(label)
+                continue
+            updates[week_pick_key(week, interaction.guild.id)] = picks
+            imported.append(label)
+        if not updates:
+            raise DocImportError("None of the map columns match the maps in /schedule.")
         agents = runtime.load_agents()
-        agents[week_pick_key(week, interaction.guild.id)] = picks
+        agents.update(updates)
         runtime.save_agents(agents)
     except (DocImportError, JsonStoreError) as exc:
         return await interaction.followup.send(f"Lineup import stopped. {exc}"[:1900], ephemeral=True,
                                                allowed_mentions=discord.AllowedMentions.none())
-    await interaction.followup.send(
-        f"Saved {len(picks)} picks for {week['label']} on {week['map']}. Open them with /lineup week:{week['label']}.",
-        ephemeral=True,
-    )
+    message = "Imported lineups for " + ", ".join(imported) + ". Open any week with /lineup."
+    if skipped:
+        message += " No map column for " + ", ".join(skipped) + "."
+    await interaction.followup.send(message[:1900], ephemeral=True)
 
 
 async def import_playbook(interaction, sheet, runtime):

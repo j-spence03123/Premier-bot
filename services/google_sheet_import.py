@@ -73,7 +73,9 @@ def parse_lineup_sheet(text, map_name):
     rows = list(csv.reader(io.StringIO(text, newline="")))
     headers = [(index, column) for index, row in enumerate(rows) for column, cell in enumerate(row)
                if column >= 2 and cell.strip().casefold() == map_name.casefold()]
-    if len(headers) != 1:
+    if not headers:
+        return None
+    if len(headers) > 1:
         raise DocImportError(f"Expected one column headed '{map_name}' in column C or later.")
     header, column = headers[0]
     picks = []

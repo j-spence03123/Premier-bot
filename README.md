@@ -30,9 +30,9 @@ Both commands require server administrator permissions and a sheet shared as **A
 
 ### Lineup
 
-Run `/importlineup sheet:<tab link> week:<week label or start date>`. Use column B for player names and columns C onward for maps. Put each map name above its agent picks. Blank rows above the map headings are fine.
+Run `/importlineup sheet:<tab link>`. Use column B for player names and columns C onward for maps. Put each map name above its agent picks. Blank rows above the map headings are fine.
 
-Players can be identified by an exact Discord name or nickname, a Discord user ID, or a linked Riot ID. The bot reads the map for that week from `/schedule` and saves its picks. Reimporting replaces that week's picks. Use `/lineup week:` to view them.
+Players can be identified by an exact Discord name or nickname, a Discord user ID, or a linked Riot ID. The bot matches map columns to every week in `/schedule`. Reimporting replaces picks for matching weeks. Weeks without a matching column keep their existing picks. Use `/lineup week:` to view them.
 
 ### Playbook
 
