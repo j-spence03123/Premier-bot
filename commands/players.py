@@ -49,6 +49,12 @@ class PlayersCog(commands.Cog):
     async def accounts_cmd(self, interaction: discord.Interaction):
         return await player_handlers.accounts_cmd(interaction, load_accounts=self.runtime.load_accounts)
 
+    @app_commands.command(name='registeredusers', description='See the VALORANT accounts linked by members of this server')
+    @app_commands.guild_only()
+    @app_commands.describe(member='Show accounts for just this member')
+    async def registered_users(self, interaction: discord.Interaction, member: discord.Member=None):
+        return await player_handlers.registered_users(interaction, member, load_accounts=self.runtime.load_accounts)
+
     @app_commands.command(name='rank', description='Current and peak rank for a Riot ID, you, or a member with a linked account')
     @app_commands.describe(name='Riot name, or Name#TAG', tag='Tag (after the #)', region='eu, na, ap, kr, latam or br', member='Select or @mention a member', account='Linked account to use when no Riot ID is entered')
     async def rank_cmd(self, interaction: discord.Interaction, name: str='', tag: str='', region: str='', member: discord.Member=None, account: AccountSlot="Main"):

@@ -24,9 +24,9 @@ async def test_command_cogs_preserve_all_slash_command_metadata(monkeypatch):
 
     await install_command_cogs(temporary, bot.make_command_context())
     commands_by_name = metadata(temporary.tree)
-    assert len(commands_by_name) == 31
+    assert len(commands_by_name) == 32
     assert {"recent", "matchfeed", "matchfeed_tone", "player", "playbook", "importlineup", "importplaybook",
-            "registersmurf"}.issubset(commands_by_name)
+            "registersmurf", "registeredusers"}.issubset(commands_by_name)
     agent_params = commands_by_name["agent"][1]
     assert [(p[0], p[1], p[3]) for p in agent_params] == [("agent_name", True, True), ("map_name", False, True)]
     assert commands_by_name["recent"][1][0][0] == "player"

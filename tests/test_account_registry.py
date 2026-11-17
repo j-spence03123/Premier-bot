@@ -3,8 +3,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+import discord
 
-from commands.player_handlers import register_account, unregister
+from commands.player_handlers import register_account, registered_users, unregister
 from commands.players import PlayersCog
 from services.account_registry import deduplicate_accounts, select_linked_account
 from services.bot_state import BotState
@@ -140,3 +141,28 @@ async def test_registersmurf_permissions(administrator, other_member):
         interaction.response.send_message.assert_awaited_once()
     else:
         register.assert_awaited_once_with(interaction, member if other_member else user, "Alt#EU", "", smurf=True)
+
+
+@pytest.mark.asyncio
+async def test_registeredusers_groups_accounts_and_excludes_other_servers():
+    person = SimpleNamespace(id=12, display_name="Player")
+    missing = discord.NotFound(SimpleNamespace(status=404, reason="Not Found"), "Unknown member")
+    guild = SimpleNamespace(
+        get_member=Mock(return_value=None),
+        fetch_member=AsyncMock(side_effect=[person, missing]),
+    )
+    interaction = SimpleNamespace(
+        guild=guild, response=SimpleNamespace(defer=AsyncMock()),
+        followup=SimpleNamespace(send=AsyncMock()),
+    )
+    accounts = {
+        "12": {"name": "Player", "tag": "EU", "region": "eu",
+               "smurfs": [{"name": "Alt", "tag": "NA", "region": "na"}]},
+        "34": {"name": "Elsewhere", "tag": "EU"},
+    }
+    await registered_users(interaction, load_accounts=lambda: accounts)
+    call = interaction.followup.send.await_args
+    assert "<@12>\n• **Main** · Player#EU (eu)\n• **Smurf 1** · Alt#NA (na)" in call.args[0]
+    assert "Elsewhere" not in call.args[0]
+    assert call.kwargs["ephemeral"] is True
+    assert call.kwargs["allowed_mentions"].users is False

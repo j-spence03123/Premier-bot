@@ -127,6 +127,60 @@ async def accounts_cmd(interaction, *, load_accounts):
         lines.append(f"<@{uid}> → {account['name']}#{account['tag']} ({account.get('region', '')}) · {label}")
     await interaction.response.send_message('\n'.join(lines)[:1900], allowed_mentions=discord.AllowedMentions.none())
 
+
+async def registered_users(interaction, member=None, *, load_accounts):
+    guild = interaction.guild
+    if not guild:
+        return await interaction.response.send_message("Use /registeredusers in a server.", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    accounts_by_user = {}
+    for uid, account, smurf in iter_linked_accounts(load_accounts()):
+        if uid.isdecimal() and (member is None or uid == str(member.id)):
+            accounts_by_user.setdefault(int(uid), []).append((account, smurf))
+
+    lookup_slots = asyncio.Semaphore(5)
+
+    async def find_member(user_id):
+        cached = guild.get_member(user_id)
+        if cached is not None:
+            return cached
+        async with lookup_slots:
+            try:
+                return await guild.fetch_member(user_id)
+            except discord.NotFound:
+                return None
+
+    try:
+        members = [member] if member else await asyncio.gather(*(find_member(uid) for uid in accounts_by_user))
+    except discord.HTTPException:
+        return await interaction.followup.send("Couldn't check the server member list. Try again in a moment.", ephemeral=True)
+    registered = sorted((person for person in members if person and person.id in accounts_by_user),
+                        key=lambda person: person.display_name.casefold())
+    if not registered:
+        message = ("That member has no linked VALORANT accounts." if member else
+                   "No members of this server have linked VALORANT accounts yet.")
+        return await interaction.followup.send(message, ephemeral=True)
+
+    page = "**Registered VALORANT accounts**"
+    for person in registered:
+        lines = [f"<@{person.id}>"]
+        slot = 0
+        for account, smurf in accounts_by_user[person.id]:
+            if smurf:
+                slot += 1
+            label = f"Smurf {slot}" if smurf else "Main"
+            riot_id = discord.utils.escape_markdown(f"{account['name']}#{account['tag']}"[:100])
+            region = account.get("region")
+            lines.append(f"• **{label}** · {riot_id}" + (f" ({region})" if region else ""))
+        block = "\n".join(lines)
+        if len(page) + len(block) + 2 > 1900:
+            await interaction.followup.send(page, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+            page = block
+        else:
+            page += "\n\n" + block
+    await interaction.followup.send(page, ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
+
+
 def _profile_account(caller, member, name, tag, region, account_slot, load_accounts, resolve_player):
     if account_slot == "Main" or name or tag:
         return resolve_player(caller, member, name, tag, region)
