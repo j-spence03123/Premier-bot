@@ -157,8 +157,50 @@ def test_recap_uses_verified_weapons_and_ace():
 
     kills[-1]["weapon"] = {"name": "Paint Shells", "type": "Ability"}
     recap = local_matchfeed_recap(detail, [player], player)["recap"]
-    assert "including 4 with the Sheriff" in recap
+    assert "ace in round 1" in recap
+    assert "Sheriff" not in recap
     assert "Paint Shells" not in recap
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("story, expected", [
+    ("Friend dropped a [[WEAPON]] 4K. The team lost Haven 5–13.", "Friend dropped a Sheriff 4K."),
+    ("Friend dropped a 4K. The team lost Haven 5–13.", "Friend dropped a 4K."),
+    ("Friend dropped a [[WEAPON]] 4K. The [[WEAPON]] clocked out.", None),
+    ("Friend dropped a 4K. Then came the Vandal cleanup.", None),
+])
+async def test_weapon_is_optional_and_limited_to_opening_highlight(story, expected):
+    player = {"puuid": "p1", "name": "Friend", "team_id": "Red", "stats": {"kills": 9, "deaths": 15}}
+    kills = [
+        {"round": round_id, "time_in_round_in_ms": index * 1000, "killer": player,
+         "weapon": {"name": weapon, "type": "Weapon"}}
+        for round_id, weapon, count in ((0, "Sheriff", 4), (1, "Vandal", 3))
+        for index in range(1, count + 1)
+    ]
+    teams = [{"team_id": "Red", "rounds": {"won": 5, "lost": 13}}, {"team_id": "Blue"}]
+    rounds = [{"id": index, "winning_team": "Red" if index < 5 else "Blue"} for index in range(18)]
+    detail = {"players": [player], "kills": kills, "teams": teams, "rounds": rounds}
+    response = {"choices": [{"finish_reason": "stop", "message": {
+        "content": json.dumps({"headline": "An opening to remember", "recap": story})
+    }}]}
+    http = FakeSession(FakeResponse(200, response))
+    result = await generate_recap(http, "test-key", "test-model", detail, [player], player)
+    if expected:
+        assert result["recap"].startswith(expected)
+    else:
+        assert result is None
+    payload = http.request[1]["json"]["messages"][1]["content"]
+    assert "Sheriff" not in payload and "Vandal" not in payload
+    facts = json.loads(payload)
+    assert facts["half_results"] == {"first_half": [5, 7], "second_half": [0, 6]}
+    assert facts["teammates"][0]["match_kd"] == 0.6
+
+    fallback = local_matchfeed_recap(detail, [player], player)
+    assert fallback["recap"].count("Sheriff") == 1 and "Vandal" not in fallback["recap"]
+    assert "Sheriff" not in fallback["headline"]
+    assert fallback["recap"].index("5–13") < fallback["recap"].index("3K")
+    assert "0–6 in the second half" in fallback["recap"]
+    assert "half_results" not in recap_facts({**detail, "rounds": rounds[:-1]}, [player], player)
 
 
 @pytest.mark.asyncio
