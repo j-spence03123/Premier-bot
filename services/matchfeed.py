@@ -1,6 +1,8 @@
 """Pure matchfeed helpers shared by polling and notification tests."""
 
 from datetime import datetime, timedelta
+from copy import deepcopy
+from hashlib import sha256
 import json
 from zoneinfo import ZoneInfo
 
@@ -8,7 +10,7 @@ from utils.formatting import parse_time
 
 
 MATCHFEED_DAY_ZONE = ZoneInfo("Europe/London")
-SESSION_IDLE_LIMIT = timedelta(hours=2)
+SESSION_IDLE_LIMIT = timedelta(hours=1)
 ORDINAL_WORDS = ("First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth", "Tenth")
 
 
@@ -22,7 +24,7 @@ def format_match_footer(session_count, player_totals):
     return f"{ordinal} {kind} game of this session", tuple(player_totals)
 
 
-def next_matchfeed_counts(feed, players, match_id, started, finished, histories):
+def next_matchfeed_counts(feed, players, match_id, started, finished, histories, recap_match=None):
     """Calculate the footer and the state to save after the post succeeds."""
     roster = {}
     for player in players:
@@ -31,17 +33,34 @@ def next_matchfeed_counts(feed, players, match_id, started, finished, histories)
         roster[player_id] = riot_key
     roster_key = json.dumps(sorted(roster))
     counts = feed.get("match_counts") or {}
-    sessions = dict(counts.get("sessions", {}))
+    sessions = deepcopy(counts.get("sessions", {}))
+    pending = deepcopy(counts.get("pending_recaps", {}))
     player_days = dict(counts.get("player_days", {}))
     previous = sessions.get(roster_key)
     last_finished = datetime.fromisoformat(previous["last_finished"]) if previous else None
     session_count = 1
-    if previous and started <= last_finished + SESSION_IDLE_LIMIT:
+    continuing = (previous and not previous.get("recap_message_id")
+                  and started < last_finished + SESSION_IDLE_LIMIT
+                  and (recap_match is None or previous.get("matches")))
+    if continuing:
         session_count += previous["count"]
+    elif previous and previous.get("matches") and not previous.get("recap_message_id"):
+        pending[previous["recap_id"]] = previous
     sessions[roster_key] = {
         "last_finished": max(finished, last_finished or finished).isoformat(),
         "count": session_count,
     }
+    if recap_match is not None:
+        matches = list(previous["matches"]) if continuing else []
+        matches = [match for match in matches if match["id"] != str(match_id)]
+        matches.append(recap_match)
+        matches.sort(key=lambda match: match["started"])
+        sessions[roster_key].update(
+            count=len(matches), matches=matches,
+            recap_id=sha256((roster_key + matches[0]["id"]).encode()).hexdigest()[:24],
+            players=[p.get("name") or "Player" for p in players],
+        )
+        session_count = len(matches)
     day = finished.astimezone(MATCHFEED_DAY_ZONE).date()
     day_key = day.isoformat()
     day_players = dict(player_days.get(day_key, {}))
@@ -61,7 +80,7 @@ def next_matchfeed_counts(feed, players, match_id, started, finished, histories)
     player_days[day_key] = day_players
     # Keep the previous day available for reports that arrive around midnight.
     player_days = {key: player_days[key] for key in sorted(player_days)[-2:]}
-    return {"sessions": sessions, "player_days": player_days}, format_match_footer(session_count, totals)
+    return {"sessions": sessions, "pending_recaps": pending, "player_days": player_days}, format_match_footer(session_count, totals)
 
 
 def group_registered_players(players, linked_accounts):

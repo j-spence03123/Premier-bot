@@ -1,7 +1,7 @@
 import pytest
 import json
 
-from services.ai_recap import generate_recap, recap_facts
+from services.ai_recap import generate_recap, recap_facts, generate_session_summary
 
 
 class FakeResponse:
@@ -27,6 +27,22 @@ class FakeSession:
     def post(self, url, **kwargs):
         self.request = (url, kwargs)
         return self.response
+
+
+@pytest.mark.asyncio
+async def test_session_summary_receives_match_order_and_rr_coverage():
+    http = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {
+        "content": '{"summary":"Kevin finished the session with a win on Haven."}'
+    }}]}))
+    data = {"players": ["Kevin"], "matches": [
+        {"map": "Haven", "result": "W", "score": "13–8", "moments": [], "rank_changes": [],
+         "rr_changes": [{"player_id": "p1", "player": "Kevin", "change": 20}]},
+    ]}
+    result = await generate_session_summary(http, "test-key", "test-model", data, "kind")
+    assert result == "Kevin finished the session with a win on Haven."
+    facts = json.loads(http.request[1]["json"]["messages"][1]["content"])
+    assert facts["rr_totals"][0]["rr"] == 20
+    assert facts["matches"][0]["map"] == "Haven"
 
 
 @pytest.mark.asyncio

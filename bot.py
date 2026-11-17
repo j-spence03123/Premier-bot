@@ -32,6 +32,7 @@ from services.json_store import JsonStoreError, read_json
 from services.match_history import MatchHistoryService
 from services.playbook_service import PlaybookDataError, PlaybookService
 from services.google_sheet_import import read_google_sheet
+from services.session_recap import prepare_session_recap
 from services.valorant_api import HenrikDevClient
 from utils.formatting import fmt_range, parse_time
 from utils.premier_seasons import extract_premier_seasons
@@ -348,7 +349,15 @@ async def matchfeed_loop():
         play_match_image=play_match_image,
         rank_change_image=rank_change_image,
         save_matchfeed_progress=save_matchfeed_progress,
+        prepare_recap=prepare_recap,
         AFFINITY=AFFINITY,
+    )
+
+
+async def prepare_recap(session, tone):
+    return await prepare_session_recap(
+        session, tone, accounts=load_accounts(), cached_api=cached_api, affinity=AFFINITY,
+        http_session=client.http_session, api_key=SETTINGS.groq_api_key, model=SETTINGS.groq_model,
     )
 
 

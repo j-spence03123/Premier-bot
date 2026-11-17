@@ -24,6 +24,10 @@ Start the bot from the repository directory:
 python bot.py
 ```
 
+Automatic matchfeeds also post a session recap after an hour without a new completed match for the same lineup. The regular two-minute poll checks for new games before closing sessions. Recaps show the session record, maps, each player's net RR, and a short AI summary with standout plays. Missing RR is retried before posting and shown as unavailable when any game is still missing. AI summaries use the existing Groq configuration and server tone, with factual highlights as a fallback. Each lineup and solo player has its own session. Match history cannot identify a game still in progress.
+
+Session details are saved with matchfeed state and survive restarts. Recap tracking starts with the first match detected after this feature is installed. The recap card uses the bot's existing Pillow image generation and shared match-card fonts.
+
 ## Import lineups and playbooks from Google Sheets
 
 Both commands require server administrator permissions and a sheet shared as **Anyone with the link → Viewer** with downloads allowed.
