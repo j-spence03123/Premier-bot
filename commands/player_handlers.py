@@ -16,19 +16,22 @@ async def register_user(interaction, member, riot_id, region='', *, register_acc
         return await interaction.response.send_message('Only server administrators can use this command.', ephemeral=True)
     await register_account(interaction, member, riot_id, region)
 
-def _registration_error(accounts, user_id, requested, smurf):
+def _registration_error(accounts, user_id, requested, smurf, is_self=True):
     main = accounts.get(user_id)
     if smurf and not main:
-        return 'Link your main VALORANT account with /register first.'
+        return ('Link your main VALORANT account with /register first.' if is_self else
+                'This member needs a main VALORANT account linked with /register or /registeruser first.')
     for owner, account, is_smurf in iter_linked_accounts(accounts):
         if not matching_account(requested, account):
             continue
         if owner != user_id:
             return 'That VALORANT account is already registered to another user.'
         if smurf or is_smurf:
-            return 'You already have that VALORANT account registered.'
+            return ('You already have that VALORANT account registered.' if is_self else
+                    'This member already has that VALORANT account registered.')
     if smurf and len(main.get("smurfs", [])) >= MAX_SMURFS:
-        return f'You can link up to {MAX_SMURFS} smurfs. Use /unregister with a Riot ID to remove one.'
+        subject = 'You can' if is_self else 'This member can'
+        return f'{subject} link up to {MAX_SMURFS} smurfs. The account owner can remove one with /unregister.'
     return None
 
 
@@ -39,12 +42,13 @@ async def register_account(interaction, target, riot_id, region, *, AFFINITY, RE
         return await interaction.followup.send('Enter your Riot ID as Name#TAG, including the #.')
     name, tag = parts
     user_id = str(target.id)
+    is_self = target.id == interaction.user.id
     accounts = load_accounts()
     main = accounts.get(user_id) or {}
     default_region = (main.get("region") or AFFINITY) if smurf else AFFINITY
     reg = region.lower() if region.lower() in REGIONS else default_region
     requested = {'name': name, 'tag': tag, 'region': reg}
-    if error := _registration_error(accounts, user_id, requested, smurf):
+    if error := _registration_error(accounts, user_id, requested, smurf, is_self):
         return await interaction.followup.send(error)
     data = None
     try:
@@ -62,7 +66,7 @@ async def register_account(interaction, target, riot_id, region, *, AFFINITY, RE
     if resolved.get('puuid'):
         requested['puuid'] = resolved['puuid']
     accounts = load_accounts()
-    if error := _registration_error(accounts, user_id, requested, smurf):
+    if error := _registration_error(accounts, user_id, requested, smurf, is_self):
         return await interaction.followup.send(error)
     previous = accounts.get(user_id)
     if smurf:
@@ -70,9 +74,9 @@ async def register_account(interaction, target, riot_id, region, *, AFFINITY, RE
         smurfs = [*previous.get("smurfs", []), requested]
         accounts[user_id] = {**previous, "smurfs": smurfs}
         save_accounts(accounts)
-        return await interaction.followup.send(
-            f"Registered **{requested['name']}#{requested['tag']}** ({reg}) as smurf {len(smurfs)} of {MAX_SMURFS}."
-        )
+        message = f"Registered **{requested['name']}#{requested['tag']}** ({reg}) as smurf {len(smurfs)} of {MAX_SMURFS}"
+        message += "." if is_self else f" for <@{target.id}>."
+        return await interaction.followup.send(message, allowed_mentions=discord.AllowedMentions.none())
     previous_time = previous.get('registered_at') if isinstance(previous, dict) and matching_account(previous, requested) else None
     requested['registered_at'] = previous_time or datetime.now(timezone.utc).isoformat()
     if previous and previous.get("smurfs"):
@@ -80,7 +84,6 @@ async def register_account(interaction, target, riot_id, region, *, AFFINITY, RE
     accounts[user_id] = requested
     save_accounts(accounts)
     tier = ((data or {}).get('current') or {}).get('tier') or {} if isinstance(data, dict) else {}
-    is_self = target.id == interaction.user.id
     msg = f'Registered **{name}#{tag}** ({reg})'
     msg += '.' if is_self else f' for {target.display_name}.'
     if tier.get('name'):

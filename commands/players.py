@@ -20,9 +20,19 @@ class PlayersCog(commands.Cog):
         return await player_handlers.register(interaction, riot_id, region, register_account=self.runtime.register_account)
 
     @app_commands.command(name='registersmurf', description='Link an alternate VALORANT account (up to two)')
-    @app_commands.describe(riot_id='Riot ID for your smurf, like Name#TAG', region="Region (defaults to your main account's)")
-    async def registersmurf(self, interaction: discord.Interaction, riot_id: str, region: str=''):
-        return await self.runtime.register_account(interaction, interaction.user, riot_id, region, smurf=True)
+    @app_commands.describe(
+        riot_id='Riot ID for the smurf, like Name#TAG',
+        region='Region (defaults to the linked main account region)',
+        member='Link a smurf for this member (administrators only)',
+    )
+    async def registersmurf(self, interaction: discord.Interaction, riot_id: str, region: str='',
+                            member: discord.Member=None):
+        target = member or interaction.user
+        if target.id != interaction.user.id and (not interaction.guild or not interaction.permissions.administrator):
+            return await interaction.response.send_message(
+                'Only server administrators can register a smurf for someone else.', ephemeral=True,
+            )
+        return await self.runtime.register_account(interaction, target, riot_id, region, smurf=True)
 
     @app_commands.command(name='registeruser', description='Link a Valorant account to another server member (administrators only)')
     @app_commands.default_permissions(administrator=True)

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from commands.player_handlers import register_account, unregister
+from commands.players import PlayersCog
 from services.account_registry import deduplicate_accounts, select_linked_account
 from services.bot_state import BotState
 from utils.riot_id import split_riot_id
@@ -121,3 +122,21 @@ async def test_smurf_puuid_is_checked_against_other_users_smurfs():
                            split_riot_id=split_riot_id, smurf=True)
     save.assert_not_called()
     assert "already registered to another user" in interaction.followup.send.await_args.args[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("administrator, other_member", [(False, False), (False, True), (True, True)])
+async def test_registersmurf_permissions(administrator, other_member):
+    user, member = SimpleNamespace(id=1), SimpleNamespace(id=2)
+    interaction = SimpleNamespace(
+        user=user, guild=object(), permissions=SimpleNamespace(administrator=administrator),
+        response=SimpleNamespace(send_message=AsyncMock()),
+    )
+    register = AsyncMock()
+    cog = PlayersCog(SimpleNamespace(register_account=register))
+    await cog.registersmurf.callback(cog, interaction, "Alt#EU", member=member if other_member else None)
+    if other_member and not administrator:
+        register.assert_not_awaited()
+        interaction.response.send_message.assert_awaited_once()
+    else:
+        register.assert_awaited_once_with(interaction, member if other_member else user, "Alt#EU", "", smurf=True)
