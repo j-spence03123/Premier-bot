@@ -42,7 +42,7 @@ async def test_play_card(interaction, *, play_match_image, load_matchfeeds):
     feed = load_matchfeeds().get(str(interaction.guild_id)) or {}
     tone = normalize_tone(feed.get('tone'))
     card = await play_match_image(detail, [kevin, spam], [kevin, spam], kevin, summary_players=[kevin, spam], tone=tone,
-                                  footer=format_match_footer(1, [("Kevin", 3), ("Spam", 1)]))
+                                  footer=format_match_footer(1, [(kevin["puuid"], 3), (spam["puuid"], 1)]))
     await interaction.followup.send(file=card, ephemeral=True)
 
 async def test_rank_card(interaction, scenario, *, rank_change_image):

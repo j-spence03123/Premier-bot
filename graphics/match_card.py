@@ -137,12 +137,12 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
                 used = 0
             used += tag_width + 6
         max_tag_rows = max(max_tag_rows, tag_rows)
-    card_h = 208 + (max_tag_rows - 1) * 28
+    daily_totals = dict(footer[1]) if footer else {}
+    card_h = 208 + (max_tag_rows - 1) * 28 + (25 if daily_totals else 0)
     rows = max(1, (len(tracked) + columns - 1) // columns)
     cards_top = hero_h + summary_h + 22
     cards_bottom = cards_top + rows * (card_h + gap) - gap
-    footer_line_gap = 24
-    footer_height = 66 + (len(footer[1]) - 1) * footer_line_gap if footer else 26
+    footer_height = 58 if footer else 26
     height = cards_bottom + footer_height
     image = Image.new("RGB", (width, height), (17, 17, 22))
     draw = ImageDraw.Draw(image)
@@ -244,16 +244,19 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
         draw.text(((x + right) // 2, subtext_y),
                   f"HS {item['hs']}% | FB {item['fb']} | FD {item['fd']}",
                   font=match_font(15), fill=(155, 152, 161), anchor="mm")
+        player_id = p.get("puuid") or f"{p.get('name', '')}#{p.get('tag', '')}".casefold()
+        if player_id in daily_totals:
+            count = daily_totals[player_id]
+            label = "game" if count == 1 else "games"
+            draw.text(((x + right) // 2, subtext_y + 24), f"{count} {label} today",
+                      font=match_font(16), fill=(207, 205, 210), anchor="mm")
     if footer:
-        footer_left, right_lines = footer
+        footer_left, _ = footer
         footer_y = height - 25
         footer_font = match_font(19)
         footer_color = (173, 170, 180)
         draw.line((side_pad, cards_bottom + 16, width - side_pad, cards_bottom + 16), fill=(42, 40, 45))
         draw.text((side_pad, footer_y), footer_left, font=footer_font, fill=footer_color, anchor="lm")
-        for index, line in enumerate(reversed(right_lines)):
-            draw.text((width - side_pad, footer_y - index * footer_line_gap), line,
-                      font=footer_font, fill=footer_color, anchor="rm")
     buffer = io.BytesIO()
     image.save(buffer, "PNG")
     buffer.seek(0)

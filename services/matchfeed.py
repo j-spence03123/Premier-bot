@@ -18,12 +18,8 @@ def format_match_footer(session_count, player_totals):
     else:
         suffix = "th" if 11 <= session_count % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(session_count % 10, "th")
         ordinal = f"{session_count}{suffix}"
-    if len(player_totals) == 1:
-        right_lines = (f"Games played today: {player_totals[0][1]}",)
-    else:
-        right_lines = ("Games played today", *(f"{name}: {total}" for name, total in player_totals))
     kind = "group" if len(player_totals) > 1 else "solo"
-    return f"{ordinal} {kind} game of this session", right_lines
+    return f"{ordinal} {kind} game of this session", tuple(player_totals)
 
 
 def next_matchfeed_counts(feed, players, match_id, started, finished, histories):
@@ -32,7 +28,7 @@ def next_matchfeed_counts(feed, players, match_id, started, finished, histories)
     for player in players:
         riot_key = f"{player.get('name', '')}#{player.get('tag', '')}".casefold()
         player_id = player.get("puuid") or riot_key
-        roster[player_id] = (player.get("name") or "Player", riot_key)
+        roster[player_id] = riot_key
     roster_key = json.dumps(sorted(roster))
     counts = feed.get("match_counts") or {}
     sessions = dict(counts.get("sessions", {}))
@@ -50,7 +46,7 @@ def next_matchfeed_counts(feed, players, match_id, started, finished, histories)
     day_key = day.isoformat()
     day_players = dict(player_days.get(day_key, {}))
     totals = []
-    for player_id, (name, riot_key) in roster.items():
+    for player_id, riot_key in roster.items():
         match_ids = set(day_players.get(player_id, []))
         for row in histories.get(riot_key, []):
             meta = row.get("meta") or {}
@@ -61,7 +57,7 @@ def next_matchfeed_counts(feed, players, match_id, started, finished, histories)
                     match_ids.add(str(previous_id))
         match_ids.add(str(match_id))
         day_players[player_id] = sorted(match_ids)
-        totals.append((name, len(match_ids)))
+        totals.append((player_id, len(match_ids)))
     player_days[day_key] = day_players
     # Keep the previous day available for reports that arrive around midnight.
     player_days = {key: player_days[key] for key in sorted(player_days)[-2:]}
