@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import discord
 
 from graphics.session_recap import draw_session_recap
+from services.account_registry import iter_linked_accounts
 from services.ai_recap import recap_facts, _featured_rounds, generate_session_summary, recap_with_deadline
 from services.matchfeed import SESSION_IDLE_LIMIT
 from utils.formatting import parse_time
@@ -49,6 +50,7 @@ def session_match(detail, players, match_id, started, finished, context, rank_hi
         "result": "W" if won > lost else "L" if won < lost else "D",
         "score": f"{won}–{lost}", "margin": won - lost,
         "moments": moments, "rank_changes": rank_changes, "rr_changes": rr_changes,
+        "smurfs": [player for player in facts["teammates"] if player.get("is_smurf")],
     }
 
 
@@ -56,8 +58,8 @@ async def prepare_session_recap(session, tone, *, accounts, cached_api, affinity
     """Retry rank history that had not arrived when individual matches were posted."""
     missing = {entry["account_key"] for match in session["matches"] for entry in match.get("rr_changes", [])
                if entry.get("change") is None}
-    linked = {f"{account.get('name', '')}#{account.get('tag', '')}".casefold(): account
-              for account in accounts.values()}
+    linked = {f"{account['name']}#{account['tag']}".casefold(): account
+              for _, account, _ in iter_linked_accounts(accounts)}
     for key in sorted(missing):
         account = linked.get(key)
         if not account:

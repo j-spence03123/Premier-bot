@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from commands.player_handlers import register_account
-from services.account_registry import deduplicate_accounts
+from commands.player_handlers import register_account, unregister
+from services.account_registry import deduplicate_accounts, select_linked_account
 from services.bot_state import BotState
 from utils.riot_id import split_riot_id
 
@@ -71,3 +71,53 @@ async def test_registration_retains_time_when_same_user_registers_again():
                            cached_api=api, load_accounts=lambda: accounts, save_accounts=Mock(), split_riot_id=split_riot_id)
     assert accounts["1"]["registered_at"] == "2026-01-01T00:00:00Z"
     assert accounts["1"]["puuid"] == "uuid"
+
+
+@pytest.mark.asyncio
+async def test_smurf_registration_requires_main_respects_limit_and_frees_a_slot():
+    accounts = {}
+    interaction = SimpleNamespace(user=SimpleNamespace(id=1), response=SimpleNamespace(defer=AsyncMock(), send_message=AsyncMock()),
+                                  followup=SimpleNamespace(send=AsyncMock()))
+    api = AsyncMock(return_value={})
+    save = Mock()
+
+    async def register(riot_id, smurf=True):
+        await register_account(interaction, interaction.user, riot_id, "", AFFINITY="eu", REGIONS={"eu", "na"},
+                               cached_api=api, load_accounts=lambda: accounts, save_accounts=save,
+                               split_riot_id=split_riot_id, smurf=smurf)
+
+    await register("First#NA")
+    assert "main" in interaction.followup.send.await_args.args[0]
+    api.assert_not_awaited()
+    accounts["1"] = {"name": "Main", "tag": "NA", "region": "na"}
+    await register("First#NA")
+    await register("Second#NA")
+    await register("Third#NA")
+    assert "up to 2" in interaction.followup.send.await_args.args[0]
+    assert [smurf["name"] for smurf in accounts["1"]["smurfs"]] == ["First", "Second"]
+    assert accounts["1"]["smurfs"][0]["region"] == "na"
+    assert api.await_count == 2
+
+    await register("NewMain#EU", smurf=False)
+    assert accounts["1"]["name"] == "NewMain"
+    assert select_linked_account(accounts["1"], "Smurf 2")["name"] == "Second"
+    await unregister(interaction, "FIRST#na", load_accounts=lambda: accounts, save_accounts=save)
+    await register("Third#NA")
+    assert select_linked_account(accounts["1"], "Smurf 2")["name"] == "Third"
+
+
+@pytest.mark.asyncio
+async def test_smurf_puuid_is_checked_against_other_users_smurfs():
+    accounts = {
+        "1": {"name": "Main", "tag": "EU", "smurfs": [{"name": "Old", "tag": "EU", "puuid": "alt-id"}]},
+        "2": {"name": "Other", "tag": "EU"},
+    }
+    interaction = SimpleNamespace(user=SimpleNamespace(id=2), response=SimpleNamespace(defer=AsyncMock()),
+                                  followup=SimpleNamespace(send=AsyncMock()))
+    api = AsyncMock(return_value={"account": {"name": "Renamed", "tag": "EU", "puuid": "alt-id"}})
+    save = Mock()
+    await register_account(interaction, interaction.user, "Renamed#EU", "eu", AFFINITY="eu", REGIONS={"eu"},
+                           cached_api=api, load_accounts=lambda: accounts, save_accounts=save,
+                           split_riot_id=split_riot_id, smurf=True)
+    save.assert_not_called()
+    assert "already registered to another user" in interaction.followup.send.await_args.args[0]

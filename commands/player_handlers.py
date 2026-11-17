@@ -1,10 +1,11 @@
 """Feature command implementations; application dependencies are injected at registration."""
 from __future__ import annotations
 import asyncio
+from collections import Counter
 from datetime import datetime, timezone
 import discord
 from urllib.parse import quote
-from services.account_registry import matching_account
+from services.account_registry import MAX_SMURFS, iter_linked_accounts, matching_account, select_linked_account
 from graphics.rank_profile import draw_rank_profile
 
 async def register(interaction, riot_id, region='', *, register_account):
@@ -15,24 +16,44 @@ async def register_user(interaction, member, riot_id, region='', *, register_acc
         return await interaction.response.send_message('Only server administrators can use this command.', ephemeral=True)
     await register_account(interaction, member, riot_id, region)
 
-async def register_account(interaction, target, riot_id, region, *, AFFINITY, REGIONS, cached_api, load_accounts, save_accounts, split_riot_id):
+def _registration_error(accounts, user_id, requested, smurf):
+    main = accounts.get(user_id)
+    if smurf and not main:
+        return 'Link your main VALORANT account with /register first.'
+    for owner, account, is_smurf in iter_linked_accounts(accounts):
+        if not matching_account(requested, account):
+            continue
+        if owner != user_id:
+            return 'That VALORANT account is already registered to another user.'
+        if smurf or is_smurf:
+            return 'You already have that VALORANT account registered.'
+    if smurf and len(main.get("smurfs", [])) >= MAX_SMURFS:
+        return f'You can link up to {MAX_SMURFS} smurfs. Use /unregister with a Riot ID to remove one.'
+    return None
+
+
+async def register_account(interaction, target, riot_id, region, *, AFFINITY, REGIONS, cached_api, load_accounts, save_accounts, split_riot_id, smurf=False):
     await interaction.response.defer(ephemeral=True)
     parts = split_riot_id(riot_id)
     if not parts:
         return await interaction.followup.send('Enter your Riot ID as Name#TAG, including the #.')
     name, tag = parts
-    reg = region.lower() if region.lower() in REGIONS else AFFINITY
-    requested = {'name': name, 'tag': tag, 'region': reg}
+    user_id = str(target.id)
     accounts = load_accounts()
-    if any(uid != str(target.id) and isinstance(account, dict) and matching_account(requested, account)
-           for uid, account in accounts.items()):
-        return await interaction.followup.send('That VALORANT account is already registered to another user.')
+    main = accounts.get(user_id) or {}
+    default_region = (main.get("region") or AFFINITY) if smurf else AFFINITY
+    reg = region.lower() if region.lower() in REGIONS else default_region
+    requested = {'name': name, 'tag': tag, 'region': reg}
+    if error := _registration_error(accounts, user_id, requested, smurf):
+        return await interaction.followup.send(error)
     data = None
     try:
         data = await cached_api(f'/valorant/v3/mmr/{reg}/pc/{quote(name)}/{quote(tag)}', 300)
     except Exception as e:
         if '404' in str(e):
             return await interaction.followup.send(f"Couldn't find {name}#{tag} in {reg}. Check the spelling and region.")
+        if smurf:
+            return await interaction.followup.send("Couldn't verify that Riot ID right now. Try again in a moment.")
     resolved = (data.get('account') or {}) if isinstance(data, dict) else {}
     if not isinstance(resolved, dict):
         resolved = {}
@@ -41,13 +62,22 @@ async def register_account(interaction, target, riot_id, region, *, AFFINITY, RE
     if resolved.get('puuid'):
         requested['puuid'] = resolved['puuid']
     accounts = load_accounts()
-    if any(uid != str(target.id) and isinstance(account, dict) and matching_account(requested, account)
-           for uid, account in accounts.items()):
-        return await interaction.followup.send('That VALORANT account is already registered to another user.')
-    previous = accounts.get(str(target.id))
+    if error := _registration_error(accounts, user_id, requested, smurf):
+        return await interaction.followup.send(error)
+    previous = accounts.get(user_id)
+    if smurf:
+        requested["registered_at"] = datetime.now(timezone.utc).isoformat()
+        smurfs = [*previous.get("smurfs", []), requested]
+        accounts[user_id] = {**previous, "smurfs": smurfs}
+        save_accounts(accounts)
+        return await interaction.followup.send(
+            f"Registered **{requested['name']}#{requested['tag']}** ({reg}) as smurf {len(smurfs)} of {MAX_SMURFS}."
+        )
     previous_time = previous.get('registered_at') if isinstance(previous, dict) and matching_account(previous, requested) else None
     requested['registered_at'] = previous_time or datetime.now(timezone.utc).isoformat()
-    accounts[str(target.id)] = requested
+    if previous and previous.get("smurfs"):
+        requested["smurfs"] = previous["smurfs"]
+    accounts[user_id] = requested
     save_accounts(accounts)
     tier = ((data or {}).get('current') or {}).get('tier') or {} if isinstance(data, dict) else {}
     is_self = target.id == interaction.user.id
@@ -58,27 +88,58 @@ async def register_account(interaction, target, riot_id, region, *, AFFINITY, RE
     msg += '\nNow /rank and /player work without typing your name.' if is_self else '\nThey can now use /rank and /player without typing their name.'
     await interaction.followup.send(msg)
 
-async def unregister(interaction, *, load_accounts, save_accounts):
+async def unregister(interaction, riot_id="", *, load_accounts, save_accounts):
     accounts = load_accounts()
-    if accounts.pop(str(interaction.user.id), None) is None:
+    user_id = str(interaction.user.id)
+    main = accounts.get(user_id)
+    if main is None:
         return await interaction.response.send_message("You don't have an account registered.", ephemeral=True)
+    if riot_id.strip():
+        target = riot_id.strip().casefold()
+        smurfs = main.get("smurfs", [])
+        remaining = [account for account in smurfs if f"{account['name']}#{account['tag']}".casefold() != target]
+        if len(remaining) == len(smurfs):
+            return await interaction.response.send_message(
+                "That Riot ID isn't one of your registered smurfs. Use /accounts to check.", ephemeral=True,
+            )
+        accounts[user_id] = {**main, "smurfs": remaining}
+        message = 'Your smurf was unlinked.'
+    else:
+        accounts.pop(user_id)
+        message = 'Your main account and registered smurfs were unlinked.' if main.get("smurfs") else 'Your account was unlinked.'
     save_accounts(accounts)
-    await interaction.response.send_message('Your account was unlinked.', ephemeral=True)
+    await interaction.response.send_message(message, ephemeral=True)
 
 async def accounts_cmd(interaction, *, load_accounts):
     accounts = load_accounts()
     if not accounts:
         return await interaction.response.send_message('Nobody has registered yet. Use /register.')
-    lines = [f"<@{uid}> → {a['name']}#{a['tag']} ({a.get('region', '')})" for uid, a in accounts.items()]
+    lines = []
+    slots = Counter()
+    for uid, account, smurf in iter_linked_accounts(accounts):
+        label = "Main"
+        if smurf:
+            slots[uid] += 1
+            label = f"Smurf {slots[uid]}"
+        lines.append(f"<@{uid}> → {account['name']}#{account['tag']} ({account.get('region', '')}) · {label}")
     await interaction.response.send_message('\n'.join(lines)[:1900], allowed_mentions=discord.AllowedMentions.none())
 
-async def rank_cmd(interaction, name='', tag='', region='', member=None, *, AFFINITY, NO_PLAYER, REGIONS, cached_api, icon_maps, icon_img, load_accounts, resolve_player):
+def _profile_account(caller, member, name, tag, region, account_slot, load_accounts, resolve_player):
+    if account_slot == "Main" or name or tag:
+        return resolve_player(caller, member, name, tag, region)
+    account = select_linked_account(load_accounts().get(str((member or caller).id)), account_slot)
+    if account:
+        return account["name"], account["tag"], region or account.get("region") or ""
+    return None
+
+
+async def rank_cmd(interaction, name='', tag='', region='', member=None, *, AFFINITY, NO_PLAYER, REGIONS, cached_api, icon_maps, icon_img, load_accounts, resolve_player, account_slot="Main"):
     await interaction.response.defer()
     if member and (not load_accounts().get(str(member.id))):
         return await interaction.followup.send(f'{member.display_name} has not linked a Valorant account yet. They can use /register first.')
-    who = resolve_player(interaction.user, member, name, tag, region)
+    who = _profile_account(interaction.user, member, name, tag, region, account_slot, load_accounts, resolve_player)
     if not who:
-        return await interaction.followup.send(NO_PLAYER)
+        return await interaction.followup.send(NO_PLAYER if account_slot == "Main" else f"No account is linked in {account_slot}.")
     name, tag, region = who
     reg = region.lower() if region.lower() in REGIONS else AFFINITY
     try:
@@ -99,13 +160,13 @@ async def rank_cmd(interaction, name='', tag='', region='', member=None, *, AFFI
     image = await loop.run_in_executor(None, draw_rank_profile, f'{name}#{tag}', cur, peak, current_icon, peak_icon)
     await interaction.followup.send(file=discord.File(image, filename='rank.png'))
 
-async def player_cmd(interaction, name='', tag='', mode=None, region='', member=None, *, AFFINITY, NO_PLAYER, REGIONS, cached_api, icon_img, icon_maps, load_accounts, parse_stored, render_player_history, resolve_player):
+async def player_cmd(interaction, name='', tag='', mode=None, region='', member=None, *, AFFINITY, NO_PLAYER, REGIONS, cached_api, icon_img, icon_maps, load_accounts, parse_stored, render_player_history, resolve_player, account_slot="Main"):
     await interaction.response.defer()
     if member and (not load_accounts().get(str(member.id))):
         return await interaction.followup.send(f'{member.display_name} has not linked a Valorant account yet. They can use /register first.')
-    who = resolve_player(interaction.user, member, name, tag, region)
+    who = _profile_account(interaction.user, member, name, tag, region, account_slot, load_accounts, resolve_player)
     if not who:
-        return await interaction.followup.send(NO_PLAYER)
+        return await interaction.followup.send(NO_PLAYER if account_slot == "Main" else f"No account is linked in {account_slot}.")
     name, tag, region = who
     reg = region.lower() if region.lower() in REGIONS else AFFINITY
     mode_value = mode.value if mode else 'competitive'

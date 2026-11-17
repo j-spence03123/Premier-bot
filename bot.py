@@ -391,8 +391,8 @@ def resolve_player(caller, member, name, tag, region):
 NO_PLAYER = "Give a name and tag (or Name#TAG), mention a member who has registered, or use /register to link your own account."
 
 
-async def register_account(interaction, target, riot_id, region):
-    return await player_handlers.register_account(interaction, target, riot_id, region, AFFINITY=AFFINITY, REGIONS=REGIONS, cached_api=cached_api, load_accounts=load_accounts, save_accounts=save_accounts, split_riot_id=split_riot_id)
+async def register_account(interaction, target, riot_id, region, *, smurf=False):
+    return await player_handlers.register_account(interaction, target, riot_id, region, AFFINITY=AFFINITY, REGIONS=REGIONS, cached_api=cached_api, load_accounts=load_accounts, save_accounts=save_accounts, split_riot_id=split_riot_id, smurf=smurf)
 
 
 async def valorant_acts():

@@ -28,6 +28,8 @@ Automatic matchfeeds also post a session recap after an hour without a new compl
 
 Session details are saved with matchfeed state and survive restarts. Recap tracking starts with the first match detected after this feature is installed. The recap card uses the bot's existing Pillow image generation and shared match-card fonts.
 
+After linking a main account with `/register`, use `/registersmurf riot_id:Name#Tag` to link up to two alternate accounts. They appear in the matchfeed under the same Discord user. `/rank`, `/player`, and `/recent` let you select **Smurf 1** or **Smurf 2**. Use `/accounts` to see your links and `/unregister riot_id:Name#Tag` to remove a smurf.
+
 ## Import lineups and playbooks from Google Sheets
 
 Both commands require server administrator permissions and a sheet shared as **Anyone with the link → Viewer** with downloads allowed.

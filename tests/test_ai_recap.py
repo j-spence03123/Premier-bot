@@ -162,6 +162,28 @@ def test_recap_uses_verified_weapons_and_ace():
 
 
 @pytest.mark.asyncio
+async def test_match_recap_marks_smurf_and_uses_fallback_if_ai_ignores_it():
+    player = {"puuid": "p1", "name": "Alt", "team_id": "Red",
+              "is_smurf": True, "stats": {"kills": 5, "deaths": 16}}
+    main = {"puuid": "p2", "name": "Main", "team_id": "Red",
+            "stats": {"kills": 2, "deaths": 16}}
+    players = [player, main]
+    detail = {"players": players}
+    http = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {
+        "content": '{"headline":"Rough game","recap":"Alt lost on Haven."}'
+    }}]}))
+
+    assert await generate_recap(http, "test-key", "test-model", detail, players, player) is None
+    facts = json.loads(http.request[1]["json"]["messages"][1]["content"])
+    alt, normal = facts["teammates"]
+    assert alt["is_smurf"] and alt["poor_smurf_performance"]
+    assert "is_smurf" not in normal
+    recap = local_matchfeed_recap(detail, players, player, tone="harsh")["recap"]
+    assert "Alt played on a registered smurf and went 5/16" in recap
+    assert "scoreboard missed the memo" in recap
+
+
+@pytest.mark.asyncio
 async def test_registered_only_recap_omits_other_players_and_events():
     registered = {"puuid": "p1", "name": "Friend", "team_id": "Red", "stats": {"kills": 12}}
     unregistered = {"puuid": "p2", "name": "UnlinkedTeammate", "team_id": "Red"}

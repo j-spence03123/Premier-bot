@@ -1,6 +1,31 @@
 """Identity and duplicate handling for registered Riot accounts."""
 
 from datetime import datetime, timezone
+from typing import Literal
+
+
+MAX_SMURFS = 2
+AccountSlot = Literal["Main", "Smurf 1", "Smurf 2"]
+
+
+def select_linked_account(main, slot):
+    if not main or slot == "Main":
+        return main
+    index = 0 if slot == "Smurf 1" else 1
+    smurfs = main.get("smurfs", [])
+    return smurfs[index] if index < len(smurfs) else None
+
+
+def iter_linked_accounts(accounts):
+    """Yield the Discord owner, Riot account, and whether it is a smurf."""
+    for user_id, main in accounts.items():
+        if not isinstance(main, dict):
+            continue
+        if account_key(main):
+            yield str(user_id), main, False
+        for smurf in main.get("smurfs", []):
+            if isinstance(smurf, dict) and account_key(smurf):
+                yield str(user_id), smurf, True
 
 
 def account_key(account):

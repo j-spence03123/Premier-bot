@@ -9,6 +9,7 @@ from commands import matchfeed_commands
 from commands import premier_handlers
 from commands.scoreboard_view import ScoreboardView
 from commands.recent import recent_command
+from services.account_registry import AccountSlot
 from utils.formatting import parse_time
 
 class MatchesCog(commands.Cog):
@@ -45,9 +46,9 @@ class MatchesCog(commands.Cog):
         return await matchfeed_commands.matchfeed_tone_cmd(interaction, tone, load_matchfeeds=self.runtime.load_matchfeeds, save_matchfeeds=self.runtime.save_matchfeeds)
 
     @app_commands.command(name='recent', description="Show a player's most recent competitive match scoreboard")
-    @app_commands.describe(player='Mention a member with a linked account (defaults to you)')
-    async def recent_cmd(self, interaction: discord.Interaction, player: discord.Member=None):
-        return await recent_command(interaction, player, load_accounts=self.runtime.load_accounts, affinity=self.runtime.AFFINITY, cached_api=self.runtime.cached_api, cached=self.runtime.cached, match_detail=self.runtime.match_detail, recent_scoreboard_view=self.runtime.recent_scoreboard_view)
+    @app_commands.describe(player='Mention a member with a linked account (defaults to you)', account='Linked account to use')
+    async def recent_cmd(self, interaction: discord.Interaction, player: discord.Member=None, account: AccountSlot="Main"):
+        return await recent_command(interaction, player, load_accounts=self.runtime.load_accounts, affinity=self.runtime.AFFINITY, cached_api=self.runtime.cached_api, cached=self.runtime.cached, match_detail=self.runtime.match_detail, recent_scoreboard_view=self.runtime.recent_scoreboard_view, account_slot=account)
 
     @mapresults.autocomplete("map_name")
     async def map_autocomplete(self, interaction: discord.Interaction, current: str):

@@ -4,6 +4,7 @@ import asyncio
 import re
 
 import discord
+from services.account_registry import iter_linked_accounts
 
 from services.agent_helpers import week_pick_key
 from services.google_sheet_import import (
@@ -19,9 +20,9 @@ AGENT_ALIASES = {"brim": "brimstone", "kj": "killjoy"}
 async def _resolve_player(player, guild, accounts):
     match = DISCORD_ID.fullmatch(player)
     name = player.lstrip("@").casefold()
-    linked = [uid for uid, account in accounts.items()
+    linked = list({uid for uid, account, _ in iter_linked_accounts(accounts)
               if name in {str(account.get("name", "")).casefold(),
-                          f"{account.get('name', '')}#{account.get('tag', '')}".casefold()}]
+                          f"{account.get('name', '')}#{account.get('tag', '')}".casefold()}})
     if match:
         uid = int(match[1] or match[2])
     elif "#" in name and len(linked) == 1:

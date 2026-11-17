@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfoNotFoundError
 
 import discord
 
+from services.account_registry import iter_linked_accounts
 from services.json_store import JsonStoreError
 from services.match_history import cached_match_detail
 from services.matchfeed import format_match_notification, group_registered_players, next_matchfeed_counts
@@ -100,11 +101,12 @@ async def play_session_loop(*, client, load_play_sessions, load_matchfeeds, load
             try:
                 if str(session.get("guild_id")) in matchfeeds:
                     continue  # the global match feed owns auto-posts for this guild
-                candidates = {}
-                for uid in session.get("players", []):
-                    account = accounts.get(str(uid))
-                    if not account:
+                candidates, tracked = {}, {}
+                queue_ids = {str(uid) for uid in session.get("players", [])}
+                for uid, account, smurf in iter_linked_accounts(accounts):
+                    if uid not in queue_ids:
                         continue
+                    tracked[f"{account['name']}#{account['tag']}".casefold()] = smurf
                     region = account.get("region") or AFFINITY
                     data = await cached_api(f"/valorant/v1/stored-matches/{region}/{quote(account['name'])}/{quote(account['tag'])}",
                                             240, mode="competitive", size=10)
@@ -128,16 +130,22 @@ async def play_session_loop(*, client, load_play_sessions, load_matchfeeds, load
                 channel = client.get_channel(int(session["channel_id"])) or await client.fetch_channel(int(session["channel_id"]))
                 for mid, _, region in sorted(fresh, key=lambda item: item[1]):
                     detail = await cached_match_detail(cached, match_detail, mid, region)
-                    queue_ids = set(session.get("players", []))
                     participants = detail.get("players", [])
                     # Only announce matches where at least one tracked account played.
-                    acc_names = {f"{accounts[uid]['name']}#{accounts[uid]['tag']}".casefold() for uid in queue_ids if uid in accounts}
-                    ours = [p for p in participants if f"{p.get('name','')}#{p.get('tag','')}".casefold() in acc_names]
+                    ours = []
+                    for player in participants:
+                        key = f"{player.get('name', '')}#{player.get('tag', '')}".casefold()
+                        if key in tracked:
+                            ours.append({**player, "is_smurf": tracked[key]})
                     if not ours:
                         continue
                     team = ours[0].get("team_id")
                     teammates = [p for p in participants if p.get("team_id") == team]
-                    card = await play_match_image(detail, teammates, teammates, ours[0])
+                    recap_players = [player for player in ours if player.get("team_id") == team]
+                    if any(player["is_smurf"] for player in recap_players):
+                        card = await play_match_image(detail, teammates, teammates, ours[0], summary_players=recap_players)
+                    else:
+                        card = await play_match_image(detail, teammates, teammates, ours[0])
                     await channel.send(file=card, allowed_mentions=discord.AllowedMentions.none())
             except Exception as exc:
                 print(f"Play session poll failed for channel {key}: {exc}")
@@ -177,13 +185,10 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
         try:
             if feeds and accounts:
                 linked = {}
-                for user_id, account in accounts.items():
-                    name, tag = account.get("name"), account.get("tag")
-                    if not name or not tag:
-                        continue
-                    riot_key = f"{name}#{tag}".casefold()
-                    entry = linked.setdefault(riot_key, {"account": account, "user_ids": set()})
-                    entry["user_ids"].add(str(user_id))
+                for user_id, account, smurf in iter_linked_accounts(accounts):
+                    riot_key = f"{account['name']}#{account['tag']}".casefold()
+                    entry = linked.setdefault(riot_key, {"account": account, "user_ids": set(), "is_smurf": smurf})
+                    entry["user_ids"].add(user_id)
 
                 candidates = {}
                 histories = {}
@@ -310,10 +315,11 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                         score = f"{rounds.get('won', 0)}-{rounds.get('lost', 0)}"
                         result_word = "won" if team_record.get("won") else "lost"
                         all_team_players = [p for p in detail.get("players", []) if str(p.get("team_id")) == team_id]
-                        registered_players = [
-                            p for p in group["players"]
-                            if f"{p.get('name', '')}#{p.get('tag', '')}".casefold() in member_account_keys
-                        ]
+                        registered_players = []
+                        for player in group["players"]:
+                            key = f"{player.get('name', '')}#{player.get('tag', '')}".casefold()
+                            if key in member_account_keys:
+                                registered_players.append({**player, "is_smurf": linked[key]["is_smurf"]})
                         notify_targets.append((guild_key, feed, channel, mentions, team_id,
                                                registered_players, all_team_players, result_word, score, discord_names))
 

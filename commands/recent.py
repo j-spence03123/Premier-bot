@@ -6,6 +6,7 @@ from urllib.parse import quote
 import discord
 
 from graphics.recent_scoreboard import render_recent_scoreboard
+from services.account_registry import select_linked_account
 from services.match_history import cached_match_detail
 from utils.recent_scoreboard import has_half_data
 
@@ -73,15 +74,18 @@ async def recent_scoreboard_view(detail, target, *, map_background_path, icon_ma
                                 dict(zip(tier_urls, tier_images)))
 
 
-async def recent_command(interaction, player, *, load_accounts, affinity, cached_api, cached, match_detail, recent_scoreboard_view):
+async def recent_command(interaction, player, *, load_accounts, affinity, cached_api, cached, match_detail, recent_scoreboard_view, account_slot="Main"):
     target = player or interaction.user
     accounts = load_accounts()
-    account = accounts.get(str(target.id))
-    if not account:
+    main = accounts.get(str(target.id))
+    if not main:
         return await interaction.response.send_message(
             f"{getattr(target, 'display_name', target.name)} needs to link a VALORANT account with /register first.",
             ephemeral=True,
         )
+    account = select_linked_account(main, account_slot)
+    if not account:
+        return await interaction.response.send_message(f"No account is linked in {account_slot}.", ephemeral=True)
     await interaction.response.defer()
     region = account.get("region") or affinity
     try:
