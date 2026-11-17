@@ -6,6 +6,7 @@ from urllib.parse import quote
 import discord
 
 from graphics.recent_scoreboard import render_recent_scoreboard
+from services.match_history import cached_match_detail
 from utils.recent_scoreboard import has_half_data
 
 
@@ -95,10 +96,7 @@ async def recent_command(interaction, player, *, load_accounts, affinity, cached
         latest = matches[0]
         meta = latest.get("meta") or {}
         match_id = meta["id"]
-        detail = await cached(
-            f"recentmatch:{region}:{match_id}", None,
-            lambda: match_detail(match_id, region),
-        )
+        detail = await cached_match_detail(cached, match_detail, match_id, region)
         player_stats = latest.get("stats") or {}
         puuid = player_stats.get("puuid")
         participants = detail.get("players", [])

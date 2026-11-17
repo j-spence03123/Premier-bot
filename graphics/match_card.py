@@ -1,6 +1,7 @@
 import io
 from datetime import timezone
 from pathlib import Path
+import re
 
 from PIL import Image, ImageDraw, ImageOps
 
@@ -24,13 +25,42 @@ def _assign_unique_tags(tracked):
         item["tags"] = tags
 
 
-def draw_play_result(detail, queued_players, all_teammates, representative, map_path, ai_recap=None, summary_players=None, tone="no_filter", footer=None, fallback_context=""):
+def _recap_mentions(text, players, discord_names):
+    """Replace unambiguous Riot names with the server names for this card."""
+    if not discord_names:
+        return text, None
+    labels = {}
+    spellings = {}
+    for player in players:
+        spelling = " ".join((player.get("name") or "").split())
+        name = spelling.casefold()
+        if not name:
+            continue
+        key = f"{player.get('name', '')}#{player.get('tag', '')}".casefold()
+        display = " ".join(discord_names.get(key, "").split()).lstrip("@").strip()
+        if name in labels:
+            labels[name] = ""
+        else:
+            labels[name] = "@" + display.replace(" ", "\u00a0") if display else ""
+            spellings[name] = spelling
+    labels = {name: label for name, label in labels.items() if label}
+    if not labels:
+        return text, None
+    options = "|".join(re.escape(spellings[name]) for name in sorted(labels, key=len, reverse=True))
+    text = re.sub(rf"(?<![\w@])@?({options})(?!\w)", lambda match: labels.get(match[1].casefold(), match[0]),
+                  " ".join(text.split()), flags=re.IGNORECASE)
+    mentions = "|".join(re.escape(label) for label in sorted(set(labels.values()), key=len, reverse=True))
+    return text, re.compile(rf"({mentions})(?!\w)")
+
+
+def draw_play_result(detail, queued_players, all_teammates, representative, map_path, ai_recap=None, summary_players=None, tone="no_filter", footer=None, fallback_context="", discord_names=None):
     meta = detail.get("metadata", {})
     teams = {t.get("team_id"): t for t in detail.get("teams", [])}
     team = teams.get(representative.get("team_id"), {})
     won = bool(team.get("won"))
-    our_score = (team.get("rounds") or {}).get("won", 0)
-    their_score = (team.get("rounds") or {}).get("lost", 0)
+    rounds = team.get("rounds") or {}
+    our_score = rounds.get("won", 0)
+    their_score = rounds.get("lost", 0)
     map_data = meta.get("map") or {}
     map_name = map_data.get("name", "Unknown")
     started = parse_time(meta.get("started_at"))
@@ -118,11 +148,13 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     recap = (ai_recap or {}).get("recap") or _play_recap(map_name, won, our_score, their_score, summary_tracked, focus, duration, detail, registered_only, tone)
     if fallback_context:
         recap += " " + fallback_context
+    recap, mention_pattern = _recap_mentions(recap, focus, discord_names)
     headline = ((ai_recap or {}).get("headline") or _play_headline(focus, our_score, their_score, registered_only, tone)).upper()
     recap_font = match_font(23)
     measure_draw = ImageDraw.Draw(Image.new("RGB", (width, 1)))
     columns, side_pad, column_gap = 2, 24, 18
-    recap_lines = wrap_image_text(measure_draw, recap, recap_font, width - 2 * side_pad, 20)
+    recap_lines = wrap_image_text(measure_draw, recap, recap_font, width - 2 * side_pad, 20,
+                                  keep_nonbreaking_spaces=mention_pattern is not None)
     summary_h = 114 + max(0, len(recap_lines) - 1) * 42
     card_width = (width - 2 * side_pad - column_gap) // columns
     tag_font = match_font(14, True)
@@ -137,8 +169,7 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
                 used = 0
             used += tag_width + 6
         max_tag_rows = max(max_tag_rows, tag_rows)
-    daily_totals = dict(footer[1]) if footer else {}
-    card_h = 208 + (max_tag_rows - 1) * 28 + (25 if daily_totals else 0)
+    card_h = 208 + (max_tag_rows - 1) * 28
     rows = max(1, (len(tracked) + columns - 1) // columns)
     cards_top = hero_h + summary_h + 22
     cards_bottom = cards_top + rows * (card_h + gap) - gap
@@ -159,6 +190,10 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
             pass
     draw.rectangle((0, hero_h, width, height), fill=(17, 17, 22))
     accent = (72, 181, 105) if won else (220, 86, 94)
+    headline_color = (102, 207, 147) if won else (240, 99, 106)
+    if not won and "won" in rounds and "lost" in rounds and our_score == their_score:
+        accent = (116, 116, 130)
+        headline_color = (191, 190, 201)
     f_sub = match_font(19)
     draw.text((side_pad, 169), map_name.upper(), font=match_font(56, True), fill=(250, 250, 252), anchor="lm")
     if started:
@@ -172,7 +207,6 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     draw_soft_box(image, badge_box, accent, opacity=238, radius=7)
     draw.text(((badge_box[0] + badge_box[2]) // 2, (badge_box[1] + badge_box[3]) // 2), badge,
               font=match_font(21, True), fill=(255, 250, 250), anchor="mm")
-    coral = (240, 99, 106)
     headline_size = 32
     headline_font = match_font(headline_size, True)
     while headline_size > 22 and draw.textlength(headline, font=headline_font) > width - 64:
@@ -182,9 +216,16 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
         while headline and draw.textlength(headline + "...", font=headline_font) > width - 64:
             headline = headline[:-1]
         headline = headline.rstrip() + "..."
-    draw.text((side_pad, hero_h + 44), headline, font=headline_font, fill=coral, anchor="lm")
+    draw.text((side_pad, hero_h + 44), headline, font=headline_font, fill=headline_color, anchor="lm")
     for line_index, line in enumerate(recap_lines):
-        draw.text((side_pad, hero_h + 100 + line_index * 42), line, font=recap_font, fill=(226, 226, 232), anchor="lm")
+        y = hero_h + 100 + line_index * 42
+        parts = mention_pattern.split(line) if mention_pattern else [line]
+        prefix = ""
+        for index, part in enumerate(parts):
+            x = side_pad + draw.textlength(prefix, font=recap_font)
+            color = (149, 190, 255) if index % 2 else (226, 226, 232)
+            draw.text((x, y), part, font=recap_font, fill=color, anchor="lm")
+            prefix += part
     for index, item in enumerate(tracked):
         col, row = index % columns, index // columns
         if len(tracked) % columns and row == rows - 1:
@@ -244,19 +285,12 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
         draw.text(((x + right) // 2, subtext_y),
                   f"HS {item['hs']}% | FB {item['fb']} | FD {item['fd']}",
                   font=match_font(15), fill=(155, 152, 161), anchor="mm")
-        player_id = p.get("puuid") or f"{p.get('name', '')}#{p.get('tag', '')}".casefold()
-        if player_id in daily_totals:
-            count = daily_totals[player_id]
-            label = "game" if count == 1 else "games"
-            draw.text(((x + right) // 2, subtext_y + 24), f"{count} {label} today",
-                      font=match_font(16), fill=(207, 205, 210), anchor="mm")
     if footer:
-        footer_left, _ = footer
         footer_y = height - 25
         footer_font = match_font(19)
         footer_color = (173, 170, 180)
         draw.line((side_pad, cards_bottom + 16, width - side_pad, cards_bottom + 16), fill=(42, 40, 45))
-        draw.text((side_pad, footer_y), footer_left, font=footer_font, fill=footer_color, anchor="lm")
+        draw.text((side_pad, footer_y), footer, font=footer_font, fill=footer_color, anchor="lm")
     buffer = io.BytesIO()
     image.save(buffer, "PNG")
     buffer.seek(0)

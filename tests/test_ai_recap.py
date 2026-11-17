@@ -1,7 +1,7 @@
 import pytest
 import json
 
-from services.ai_recap import generate_recap, recap_facts, generate_session_summary
+from services.ai_recap import generate_recap, recap_facts, generate_session_summary, local_matchfeed_recap
 
 
 class FakeResponse:
@@ -137,6 +137,28 @@ def test_round_highlights_summarise_multikills_without_repeating_all_events():
 
     assert highlights == [{"round": 1, "first_blood": {"seconds": 1.0, "killer": "Player", "victim": "Unknown"},
                            "multikills": [{"player": "Player", "kills": 4}]}]
+
+
+def test_recap_uses_verified_weapons_and_ace():
+    player = {"puuid": "p1", "name": "Friend", "team_id": "Red"}
+    enemies = [{"puuid": f"enemy-{number}", "team_id": "Blue"} for number in range(5)]
+    kills = [
+        {"round": 0, "time_in_round_in_ms": 1000 * index, "killer": player, "victim": enemy,
+         "weapon": {"name": "Sheriff", "type": "Weapon"}}
+        for index, enemy in enumerate(enemies, 1)
+    ]
+    detail = {"players": [player, *enemies], "kills": kills}
+    highlight = recap_facts(detail, [player], player, registered_only=True)["round_highlights"][0]
+    assert highlight["first_blood"]["weapon"] == "Sheriff"
+    assert highlight["multikills"][0] == {
+        "player": "Friend", "kills": 5, "ace": True, "weapon_kills": {"Sheriff": 5},
+    }
+    assert "ace in round 1 with the Sheriff" in local_matchfeed_recap(detail, [player], player)["recap"]
+
+    kills[-1]["weapon"] = {"name": "Paint Shells", "type": "Ability"}
+    recap = local_matchfeed_recap(detail, [player], player)["recap"]
+    assert "including 4 with the Sheriff" in recap
+    assert "Paint Shells" not in recap
 
 
 @pytest.mark.asyncio

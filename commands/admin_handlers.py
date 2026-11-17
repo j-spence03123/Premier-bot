@@ -37,12 +37,14 @@ async def test_play_card(interaction, *, play_match_image, load_matchfeeds):
             killers = [killer, blue, kevin if killer is spam else spam]
         for kill_index, player in enumerate(killers):
             victim = blue if player['team_id'] == 'Red' else kevin if kill_index % 2 else spam
-            kills.append({'round': round_number, 'time_in_round_in_ms': 1000 + kill_index * 2500, 'killer': {'puuid': player['puuid']}, 'victim': {'puuid': victim['puuid']}})
+            weapon = 'Operator' if player is spam and round_number == 11 else 'Sheriff' if round_number == 1 else 'Vandal'
+            kills.append({'round': round_number, 'time_in_round_in_ms': 1000 + kill_index * 2500, 'killer': {'puuid': player['puuid']}, 'victim': {'puuid': victim['puuid']}, 'weapon': {'name': weapon, 'type': 'Weapon'}})
     detail = {'metadata': {'map': {'id': '224b0a95-48b9-f703-1bd8-67aca101a61f', 'name': 'Abyss'}, 'started_at': now.isoformat(), 'game_length_in_ms': 44 * 60 * 1000}, 'teams': [{'team_id': 'Red', 'won': False, 'rounds': {'won': 8, 'lost': 13}, 'premier_roster': {'name': 'Queue'}}, {'team_id': 'Blue', 'won': True, 'rounds': {'won': 13, 'lost': 8}, 'premier_roster': {'name': 'Opponents'}}], 'players': [kevin, spam, blue], 'kills': kills}
     feed = load_matchfeeds().get(str(interaction.guild_id)) or {}
     tone = normalize_tone(feed.get('tone'))
     card = await play_match_image(detail, [kevin, spam], [kevin, spam], kevin, summary_players=[kevin, spam], tone=tone,
-                                  footer=format_match_footer(1, [(kevin["puuid"], 3), (spam["puuid"], 1)]))
+                                  footer=format_match_footer(1, 2),
+                                  discord_names={"kevin#test": "Kevin", "spam#test": "Spam"})
     await interaction.followup.send(file=card, ephemeral=True)
 
 async def test_rank_card(interaction, scenario, *, rank_change_image):

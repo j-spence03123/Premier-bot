@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import discord
 
 from graphics.session_recap import draw_session_recap
-from services.ai_recap import recap_facts, _featured_rounds, generate_session_summary
+from services.ai_recap import recap_facts, _featured_rounds, generate_session_summary, recap_with_deadline
 from services.matchfeed import SESSION_IDLE_LIMIT
 from utils.formatting import parse_time
 from urllib.parse import quote
@@ -77,7 +77,7 @@ async def prepare_session_recap(session, tone, *, accounts, cached_api, affinity
                         entry["change"] = change
         except Exception as exc:
             print(f"Session RR history unavailable for {key}: {exc}")
-    return await generate_session_summary(http_session, api_key, model, session, tone)
+    return await recap_with_deadline(generate_session_summary(http_session, api_key, model, session, tone))
 
 
 async def post_session_recaps(*, client, feeds, load_matchfeeds, save_matchfeed_progress, now=None, prepare_recap=None):

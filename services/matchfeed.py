@@ -6,36 +6,31 @@ from hashlib import sha256
 import json
 from zoneinfo import ZoneInfo
 
-from utils.formatting import parse_time
-
-
 MATCHFEED_DAY_ZONE = ZoneInfo("Europe/London")
 SESSION_IDLE_LIMIT = timedelta(hours=1)
 ORDINAL_WORDS = ("First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth", "Tenth")
 
 
-def format_match_footer(session_count, player_totals):
+def format_match_footer(session_count, roster_size):
     if session_count <= len(ORDINAL_WORDS):
         ordinal = ORDINAL_WORDS[session_count - 1]
     else:
         suffix = "th" if 11 <= session_count % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(session_count % 10, "th")
         ordinal = f"{session_count}{suffix}"
-    kind = "group" if len(player_totals) > 1 else "solo"
-    return f"{ordinal} {kind} game of this session", tuple(player_totals)
+    kind = "group" if roster_size > 1 else "solo"
+    return f"{ordinal} {kind} game of this session"
 
 
-def next_matchfeed_counts(feed, players, match_id, started, finished, histories, recap_match=None):
+def next_matchfeed_counts(feed, players, match_id, started, finished, recap_match=None):
     """Calculate the footer and the state to save after the post succeeds."""
-    roster = {}
+    roster = set()
     for player in players:
         riot_key = f"{player.get('name', '')}#{player.get('tag', '')}".casefold()
-        player_id = player.get("puuid") or riot_key
-        roster[player_id] = riot_key
+        roster.add(player.get("puuid") or riot_key)
     roster_key = json.dumps(sorted(roster))
     counts = feed.get("match_counts") or {}
     sessions = deepcopy(counts.get("sessions", {}))
     pending = deepcopy(counts.get("pending_recaps", {}))
-    player_days = dict(counts.get("player_days", {}))
     previous = sessions.get(roster_key)
     last_finished = datetime.fromisoformat(previous["last_finished"]) if previous else None
     session_count = 1
@@ -61,26 +56,7 @@ def next_matchfeed_counts(feed, players, match_id, started, finished, histories,
             players=[p.get("name") or "Player" for p in players],
         )
         session_count = len(matches)
-    day = finished.astimezone(MATCHFEED_DAY_ZONE).date()
-    day_key = day.isoformat()
-    day_players = dict(player_days.get(day_key, {}))
-    totals = []
-    for player_id, riot_key in roster.items():
-        match_ids = set(day_players.get(player_id, []))
-        for row in histories.get(riot_key, []):
-            meta = row.get("meta") or {}
-            previous_id = meta.get("id")
-            previous_start = parse_time(meta.get("started_at"))
-            if previous_id and previous_start and previous_start.tzinfo and previous_start < started:
-                if previous_start.astimezone(MATCHFEED_DAY_ZONE).date() == day:
-                    match_ids.add(str(previous_id))
-        match_ids.add(str(match_id))
-        day_players[player_id] = sorted(match_ids)
-        totals.append((player_id, len(match_ids)))
-    player_days[day_key] = day_players
-    # Keep the previous day available for reports that arrive around midnight.
-    player_days = {key: player_days[key] for key in sorted(player_days)[-2:]}
-    return {"sessions": sessions, "pending_recaps": pending, "player_days": player_days}, format_match_footer(session_count, totals)
+    return {"sessions": sessions, "pending_recaps": pending}, format_match_footer(session_count, len(roster))
 
 
 def group_registered_players(players, linked_accounts):

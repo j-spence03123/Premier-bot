@@ -1,3 +1,5 @@
+import asyncio
+
 from utils.match_summary import _play_headline, _play_recap
 from utils.recap_tones import DEFAULT_TONE
 from io import BytesIO
@@ -124,7 +126,8 @@ async def test_recent_displays_full_scoreboard(monkeypatch):
                                   followup=SimpleNamespace(send=AsyncMock()))
     monkeypatch.setattr(bot, "load_accounts", lambda: accounts)
     monkeypatch.setattr(bot, "cached_api", AsyncMock(return_value=[{"meta": {"id": "m1"}, "stats": {"puuid": "p1"}}]))
-    monkeypatch.setattr(bot, "cached", AsyncMock(return_value={"players": team}))
+    cache = AsyncMock(return_value={"players": team})
+    monkeypatch.setattr(bot, "cached", cache)
     view = SimpleNamespace(card=AsyncMock(return_value=object()))
     render = AsyncMock(return_value=view)
     monkeypatch.setattr(bot, "recent_scoreboard_view", render)
@@ -134,5 +137,54 @@ async def test_recent_displays_full_scoreboard(monkeypatch):
     await cog.recent_cmd.callback(cog, interaction)
 
     assert render.await_args.args == ({"players": team}, friend)
+    assert cache.await_args.args[:2] == ("matchdetail:m1", 30 * 86400)
     view.card.assert_awaited_once_with("full")
     interaction.followup.send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_match_card_overlaps_artwork_and_ai_and_falls_back_on_timeout(monkeypatch):
+    from services import ai_recap, match_images
+
+    art_started = asyncio.Event()
+    ai_started = asyncio.Event()
+    ai_cancelled = asyncio.Event()
+    player = {"puuid": "one", "name": "Friend", "team_id": "Red", "agent": {"id": "omen"}}
+    detail = {"metadata": {"map": {"id": "haven", "name": "Haven"}}, "players": [player]}
+
+    async def load_map(*args):
+        art_started.set()
+        await ai_started.wait()
+        return None
+
+    async def slow_recap(*args, **kwargs):
+        await art_started.wait()
+        ai_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            ai_cancelled.set()
+
+    monkeypatch.setattr(ai_recap, "RECAP_DEADLINE_SECONDS", 0.05)
+    draw = Mock(side_effect=lambda *args: BytesIO(b"png"))
+    card = await asyncio.wait_for(match_images.play_match_image(
+        detail, [player], [player], player, summary_players=[player],
+        map_background_path=load_map, icon_maps=AsyncMock(), icon_img=AsyncMock(return_value=None),
+        session=object(), api_key="test", model="test", generate_recap=slow_recap, draw_play_result=draw,
+    ), timeout=2)
+    card.close()
+    assert ai_cancelled.is_set()
+    assert draw.call_args.args[5]["recap"] == "The team played on Haven."
+
+
+def test_recap_mentions_use_discord_display_names_and_match_whole_names():
+    from graphics.match_card import _recap_mentions
+
+    players = [{"name": "Riot Name", "tag": "EUW"}, {"name": "Riot", "tag": "TEST"}]
+    text, mentions = _recap_mentions(
+        "Riot Name dropped a 4K. @Riot set it up. Rioter watched.",
+        players,
+        {"riot name#euw": "Server Nick", "riot#test": "Other"},
+    )
+    assert text == "@Server\u00a0Nick dropped a 4K. @Other set it up. Rioter watched."
+    assert mentions.findall(text) == ["@Server\u00a0Nick", "@Other"]

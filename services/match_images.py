@@ -4,15 +4,18 @@ import asyncio
 
 import discord
 
-from services.ai_recap import local_matchfeed_recap
+from services.ai_recap import local_matchfeed_recap, recap_with_deadline
 from services.matchfeed_context import recap_context_text
 
 
-async def play_match_image(detail, queued_players, all_teammates, representative, summary_players=None, tone="no_filter", *, footer=None, recap_context=None, map_background_path, icon_maps, icon_img, session, api_key, model, generate_recap, draw_play_result):
+async def _map_art(detail, map_background_path):
     map_data = (detail.get("metadata", {}).get("map") or {})
     map_uuid = map_data.get("id") or map_data.get("uuid")
     map_name = map_data.get("name", "Unknown")
-    path = await map_background_path(map_uuid, map_name) if map_uuid else None
+    return await map_background_path(map_uuid, map_name) if map_uuid else None
+
+
+async def _players_with_art(queued_players, icon_maps, icon_img):
     raw_agents = [p.get("agent") or p.get("character") or {} for p in queued_players]
     needs_catalog = any(
         not ((agent.get("id") or agent.get("uuid")) if isinstance(agent, dict) else "")
@@ -61,18 +64,26 @@ async def play_match_image(detail, queued_players, all_teammates, representative
     if missing:
         print("Agent art unavailable for match card: " + ", ".join(missing))
     # Keep rendering input local; API response objects remain unchanged.
-    render_players = [dict(p, _play_icon=icons_by_puuid.get(p.get("puuid"))) for p in queued_players]
-    loop = asyncio.get_running_loop()
+    return [dict(p, _play_icon=icons_by_puuid.get(p.get("puuid"))) for p in queued_players]
+
+
+async def play_match_image(detail, queued_players, all_teammates, representative, summary_players=None, tone="no_filter", *, footer=None, recap_context=None, discord_names=None, map_background_path, icon_maps, icon_img, session, api_key, model, generate_recap, draw_play_result):
     focus = summary_players if summary_players is not None else all_teammates
-    recap = await generate_recap(session, api_key, model,
-                                 detail, focus, representative, registered_only=summary_players is not None,
-                                 tone=tone, recap_context=recap_context)
+    path, render_players, recap = await asyncio.gather(
+        _map_art(detail, map_background_path),
+        _players_with_art(queued_players, icon_maps, icon_img),
+        recap_with_deadline(generate_recap(
+            session, api_key, model, detail, focus, representative,
+            registered_only=summary_players is not None, tone=tone, recap_context=recap_context,
+        )),
+    )
     fallback_context = recap_context_text(recap_context) if not recap else ""
     if not recap and summary_players is not None:
-        recap = local_matchfeed_recap(detail, focus, representative, fallback_context)
+        recap = local_matchfeed_recap(detail, focus, representative, fallback_context, tone=tone)
         fallback_context = ""
-    buffer = await loop.run_in_executor(None, draw_play_result, detail, render_players, all_teammates,
-                                        representative, path, recap, summary_players, tone, footer, fallback_context)
+    buffer = await asyncio.to_thread(draw_play_result, detail, render_players, all_teammates,
+                                     representative, path, recap, summary_players, tone, footer, fallback_context,
+                                     discord_names)
     return discord.File(buffer, filename="match.png")
 
 

@@ -35,7 +35,7 @@ def add_match(feed, mid="one", players=None, started=BASE, won=13, lost=8):
         ],
     }
     record = session_match(detail, players, mid, started, finished, [])
-    counts, footer = next_matchfeed_counts(feed, players, mid, started, finished, {}, recap_match=record)
+    counts, footer = next_matchfeed_counts(feed, players, mid, started, finished, recap_match=record)
     feed["match_counts"] = counts
     return footer
 
@@ -49,8 +49,8 @@ def test_group_and_solo_sessions_are_independent():
     add_match(feed)
     footer = add_match(feed, "two", started=BASE + timedelta(minutes=45))
     solo = add_match(feed, "three", players=PLAYERS[:1], started=BASE + timedelta(minutes=90))
-    assert footer[0].startswith("Second group")
-    assert solo[0].startswith("First solo")
+    assert footer.startswith("Second group")
+    assert solo.startswith("First solo")
     assert sorted(s["count"] for s in feed["match_counts"]["sessions"].values()) == [1, 2]
 
 
@@ -59,7 +59,7 @@ def test_new_session_preserves_unsent_recap_after_one_hour_gap():
     add_match(feed)
     old = deepcopy(active_session(feed))
     footer = add_match(feed, "two", started=BASE + timedelta(minutes=95))
-    assert footer[0].startswith("First group")
+    assert footer.startswith("First group")
     assert feed["match_counts"]["pending_recaps"][old["recap_id"]] == old
 
 
@@ -68,7 +68,7 @@ def test_closed_session_is_not_reopened_by_late_completion():
     add_match(feed)
     active_session(feed)["recap_message_id"] = "123"
     footer = add_match(feed, "two", started=BASE + timedelta(minutes=45))
-    assert footer[0].startswith("First group")
+    assert footer.startswith("First group")
     assert not feed["match_counts"]["pending_recaps"]
 
 
@@ -88,7 +88,7 @@ def test_recording_duplicate_match_is_idempotent_and_copy_isolated():
     original = deepcopy(feed)
     footer = add_match(feed)
     assert active_session(feed)["count"] == 1
-    assert footer[0].startswith("First group")
+    assert footer.startswith("First group")
     assert feed == original
 
 

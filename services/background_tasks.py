@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfoNotFoundError
 import discord
 
 from services.json_store import JsonStoreError
+from services.match_history import cached_match_detail
 from services.matchfeed import format_match_notification, group_registered_players, next_matchfeed_counts
 from services.matchfeed_context import matchfeed_recap_context
 from services.session_recap import post_session_recaps, session_match
@@ -126,8 +127,7 @@ async def play_session_loop(*, client, load_play_sessions, load_matchfeeds, load
                 dirty = True
                 channel = client.get_channel(int(session["channel_id"])) or await client.fetch_channel(int(session["channel_id"]))
                 for mid, _, region in sorted(fresh, key=lambda item: item[1]):
-                    detail = await cached(f"matchdetail:{mid}", 30 * 86400,
-                                          lambda mid=mid, region=region: match_detail(mid, region))
+                    detail = await cached_match_detail(cached, match_detail, mid, region)
                     queue_ids = set(session.get("players", []))
                     participants = detail.get("players", [])
                     # Only announce matches where at least one tracked account played.
@@ -189,51 +189,12 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                 histories = {}
                 rank_histories = {}
                 complete_poll = True
-                request_count = 0
-                for riot_key, entry in linked.items():
+                for index, (riot_key, entry) in enumerate(linked.items()):
                     account = entry["account"]
                     region = account.get("region") or AFFINITY
-                    if request_count:
-                        await asyncio.sleep(2.3)  # pace all Riot API calls below the basic rate limit
-                    request_count += 1
+                    if index:
+                        await asyncio.sleep(2.3)  # pace requests below the basic rate limit
 
-                    try:
-                        rank_data = await cached_api(
-                            f"/valorant/v3/mmr/{region}/pc/{quote(account['name'])}/{quote(account['tag'])}",
-                            MATCHFEED_CACHE_SECONDS,
-                        )
-                        current = (rank_data.get("current") or {}) if isinstance(rank_data, dict) else {}
-                        tier = current.get("tier") or {}
-                        if not tier:
-                            raise ValueError("Rank response did not include a current tier")
-                        tier_id = int(tier.get("id") or 0)
-                        tier_name = tier.get("name") or "Unrated"
-                        previous = rank_states.get(riot_key)
-                        if previous is not None and int(previous.get("tier_id") or 0) != tier_id:
-                            rank_changes.append({
-                                "riot_key": riot_key,
-                                "user_ids": sorted(entry["user_ids"]),
-                                "name": account["name"],
-                                "from_id": int(previous.get("tier_id") or 0),
-                                "from_name": previous.get("tier_name") or "Unrated",
-                                "to_id": tier_id,
-                                "to_name": tier_name,
-                                "direction": "up" if tier_id > int(previous.get("tier_id") or 0) else "down",
-                                "from_rr": previous.get("rr"),
-                                "to_rr": current.get("rr"),
-                                "rr_change": current.get("last_change"),
-                            })
-                        updated_rank = {
-                            "tier_id": tier_id, "tier_name": tier_name, "rr": current.get("rr")
-                        }
-                        if updated_rank != previous:
-                            rank_state_updates[riot_key] = updated_rank
-                    except Exception as exc:
-                        print(f"Match feed rank check failed for {account['name']}#{account['tag']}: {exc}")
-
-                    if request_count:
-                        await asyncio.sleep(2.3)
-                    request_count += 1
                     try:
                         history = await cached_api(
                             f"/valorant/v1/stored-matches/{region}/{quote(account['name'])}/{quote(account['tag'])}",
@@ -287,10 +248,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
 
                     await asyncio.sleep(2.3)
                     try:
-                        detail = await cached(
-                            f"matchdetail:{match_id}", 30 * 86400,
-                            lambda mid=match_id, region=candidate["region"]: match_detail(mid, region),
-                        )
+                        detail = await cached_match_detail(cached, match_detail, match_id, candidate["region"])
                     except Exception as exc:
                         print(f"Match feed detail failed for {match_id}: {exc}")
                         complete_poll = False
@@ -325,15 +283,19 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
 
                         guild_groups = []
                         for team_id, group in shared_teams:
-                            mentions, member_account_keys = [], set()
+                            mentions, member_account_keys, discord_names = [], set(), {}
                             for riot_key in group["account_keys"]:
-                                for user_id in linked[riot_key]["user_ids"]:
+                                for user_id in sorted(linked[riot_key]["user_ids"]):
                                     member = await guild_member(guild, user_id)
                                     if member:
                                         member_account_keys.add(riot_key)
                                         mentions.append(user_id)
+                                        display_name = getattr(member, "display_name", None)
+                                        if display_name:
+                                            discord_names.setdefault(riot_key, display_name)
                             if member_account_keys:
-                                guild_groups.append((team_id, group, list(dict.fromkeys(mentions)), member_account_keys))
+                                guild_groups.append((team_id, group, list(dict.fromkeys(mentions)),
+                                                     member_account_keys, discord_names))
                         if not guild_groups:
                             feed["seen"] = (list(feed.get("seen", [])) + [str(match_id)])[-1000:]
                             save_matchfeed_progress(feeds, guild_key)
@@ -342,7 +304,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                             len(item[1]["account_keys"]),
                             bool(team_records.get(item[0], {}).get("won")),
                         ), reverse=True)
-                        team_id, group, mentions, member_account_keys = guild_groups[0]
+                        team_id, group, mentions, member_account_keys, discord_names = guild_groups[0]
                         team_record = team_records.get(team_id, {})
                         rounds = team_record.get("rounds") or {}
                         score = f"{rounds.get('won', 0)}-{rounds.get('lost', 0)}"
@@ -353,14 +315,14 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                             if f"{p.get('name', '')}#{p.get('tag', '')}".casefold() in member_account_keys
                         ]
                         notify_targets.append((guild_key, feed, channel, mentions, team_id,
-                                               registered_players, all_team_players, result_word, score))
+                                               registered_players, all_team_players, result_word, score, discord_names))
 
                     if notify_targets:
                         started = candidate["started"]
                         duration_ms = (detail.get("metadata") or {}).get("game_length_in_ms") or 0
                         finished = started + timedelta(milliseconds=duration_ms)
                         cards_by_roster = {}
-                        for guild_key, feed, channel, mentions, team_id, registered_players, all_team_players, result_word, score in notify_targets:
+                        for guild_key, feed, channel, mentions, team_id, registered_players, all_team_players, result_word, score, discord_names in notify_targets:
                             try:
                                 tone = normalize_tone(feed.get("tone"))
                                 for player in registered_players:
@@ -383,14 +345,16 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                                     registered_players, match_id, started, finished, histories, rank_histories,
                                 )
                                 counts, footer = next_matchfeed_counts(
-                                    feed, registered_players, match_id, started, finished, histories,
+                                    feed, registered_players, match_id, started, finished,
                                     recap_match=session_match(detail, registered_players, match_id, started, finished, recap_context, rank_histories),
                                 )
-                                roster_key = (team_id, tuple(p.get("puuid") for p in registered_players), tone, footer)
+                                roster_key = (team_id, tuple(p.get("puuid") for p in registered_players),
+                                              tone, footer, tuple(sorted(discord_names.items())))
                                 if roster_key not in cards_by_roster:
                                     card = await play_match_image(detail, registered_players, all_team_players,
                                                                   registered_players[0], summary_players=registered_players,
-                                                                  tone=tone, footer=footer, recap_context=recap_context)
+                                                                  tone=tone, footer=footer, recap_context=recap_context,
+                                                                  discord_names=discord_names)
                                     cards_by_roster[roster_key] = card.fp.getvalue()
                                 await channel.send(
                                     content=format_match_notification(
@@ -413,6 +377,45 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                         save_matchfeed_progress=save_matchfeed_progress,
                         prepare_recap=prepare_recap,
                     )
+
+                # Let completed match posts and session recaps go out before checking current ranks.
+                for riot_key, entry in linked.items():
+                    account = entry["account"]
+                    region = account.get("region") or AFFINITY
+                    await asyncio.sleep(2.3)
+                    try:
+                        rank_data = await cached_api(
+                            f"/valorant/v3/mmr/{region}/pc/{quote(account['name'])}/{quote(account['tag'])}",
+                            MATCHFEED_CACHE_SECONDS,
+                        )
+                        current = (rank_data.get("current") or {}) if isinstance(rank_data, dict) else {}
+                        tier = current.get("tier") or {}
+                        if not tier:
+                            raise ValueError("Rank response did not include a current tier")
+                        tier_id = int(tier.get("id") or 0)
+                        tier_name = tier.get("name") or "Unrated"
+                        previous = rank_states.get(riot_key)
+                        if previous is not None and int(previous.get("tier_id") or 0) != tier_id:
+                            rank_changes.append({
+                                "riot_key": riot_key,
+                                "user_ids": sorted(entry["user_ids"]),
+                                "name": account["name"],
+                                "from_id": int(previous.get("tier_id") or 0),
+                                "from_name": previous.get("tier_name") or "Unrated",
+                                "to_id": tier_id,
+                                "to_name": tier_name,
+                                "direction": "up" if tier_id > int(previous.get("tier_id") or 0) else "down",
+                                "from_rr": previous.get("rr"),
+                                "to_rr": current.get("rr"),
+                                "rr_change": current.get("last_change"),
+                            })
+                        updated_rank = {
+                            "tier_id": tier_id, "tier_name": tier_name, "rr": current.get("rr")
+                        }
+                        if updated_rank != previous:
+                            rank_state_updates[riot_key] = updated_rank
+                    except Exception as exc:
+                        print(f"Match feed rank check failed for {account['name']}#{account['tag']}: {exc}")
 
                 for event in rank_changes:
                     try:

@@ -4,6 +4,13 @@ import asyncio
 from urllib.parse import quote
 
 
+async def cached_match_detail(cached, match_detail, match_id, region):
+    """Share completed match details across the feed and interactive commands."""
+    return await cached(
+        f"matchdetail:{match_id}", 30 * 86400, lambda: match_detail(match_id, region),
+    )
+
+
 class MatchHistoryService:
     """Retrieves match histories and details through injected API helpers."""
 

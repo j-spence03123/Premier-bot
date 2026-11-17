@@ -105,8 +105,9 @@ def encode_png(image):
     return buffer
 
 
-def wrap_image_text(draw, text, image_font, max_width, max_lines=2):
-    words, lines, current, truncated = text.split(), [], "", False
+def wrap_image_text(draw, text, image_font, max_width, max_lines=2, *, keep_nonbreaking_spaces=False):
+    words = text.split(" ") if keep_nonbreaking_spaces else text.split()
+    lines, current, truncated = [], "", False
     for word in words:
         candidate = f"{current} {word}".strip()
         if current and draw.textlength(candidate, font=image_font) > max_width:

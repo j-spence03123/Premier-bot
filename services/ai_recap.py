@@ -11,11 +11,21 @@ from utils.recap_tones import TONE_PROMPTS, normalize_tone
 from utils.session_summary import session_rr_totals
 
 logger = logging.getLogger(__name__)
+RECAP_DEADLINE_SECONDS = 8
 PERSONAL_STAT_FIGURE = re.compile(
     r"\b(?:\d[\d,.]*\s+(?:combat score|score|damage|ACS|ADR)|"
     r"(?:combat score|damage dealt|ACS|ADR)\s*(?:of\s+|:\s*)?\d[\d,.]*)\b",
     re.IGNORECASE,
 )
+
+
+async def recap_with_deadline(recap):
+    """Fall back to a local recap when AI would hold up a post."""
+    try:
+        return await asyncio.wait_for(recap, timeout=RECAP_DEADLINE_SECONDS)
+    except asyncio.TimeoutError:
+        logger.warning("AI recap exceeded the %d-second deadline; using local recap", RECAP_DEADLINE_SECONDS)
+        return None
 
 
 def _seconds(milliseconds):
@@ -24,9 +34,19 @@ def _seconds(milliseconds):
     return None
 
 
+def _kill_weapon(event):
+    weapon = event.get("weapon")
+    if isinstance(weapon, dict) and str(weapon.get("type") or "Weapon").casefold() == "weapon":
+        name = weapon.get("name")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    return None
+
+
 def recap_facts(detail, teammates, representative, registered_only=False):
     players = detail.get("players") or []
     names = {p.get("puuid"): p.get("name", "Unknown") for p in players if p.get("puuid")}
+    teams_by_player = {p["puuid"]: p.get("team_id") for p in players if p.get("puuid")}
     team_id = representative.get("team_id")
     team = next((t for t in detail.get("teams", []) if t.get("team_id") == team_id), {})
     meta = detail.get("metadata") or {}
@@ -41,14 +61,22 @@ def recap_facts(detail, teammates, representative, registered_only=False):
         round_number = round_index + 1 if zero_based and isinstance(round_index, int) else round_index
         if not isinstance(round_number, int):
             continue
-        round_data = round_events.setdefault(round_number, {"first": None, "missing_time": False, "kills": Counter()})
+        round_data = round_events.setdefault(round_number, {
+            "first": None, "missing_time": False, "kills": Counter(), "weapons": {}, "opponents": {},
+        })
+        weapon = _kill_weapon(event)
         seconds = _seconds(event.get("time_in_round_in_ms"))
         if seconds is None:
             round_data["missing_time"] = True
         if seconds is not None and (round_data["first"] is None or seconds < round_data["first"][0]):
-            round_data["first"] = (seconds, killer, victim)
+            round_data["first"] = (seconds, killer, victim, weapon)
         if killer in teammate_ids:
             round_data["kills"][killer] += 1
+            victim_team = teams_by_player.get(victim)
+            if victim_team and team_id and victim_team != team_id:
+                round_data["opponents"].setdefault(killer, set()).add(victim)
+            if weapon:
+                round_data["weapons"].setdefault(killer, Counter())[weapon] += 1
     highlights = []
     rounds = detail.get("rounds") or []
     round_ids = [row.get("id", index) for index, row in enumerate(rounds)]
@@ -62,7 +90,7 @@ def recap_facts(detail, teammates, representative, registered_only=False):
     for number, round_data in sorted(round_events.items()):
         item = {"round": number}
         if round_data["first"] is not None and not round_data["missing_time"]:
-            seconds, killer, victim = round_data["first"]
+            seconds, killer, victim, weapon = round_data["first"]
             if registered_only:
                 if killer in teammate_ids:
                     item["first_blood"] = {"seconds": seconds, "player": names.get(killer, "Unknown")}
@@ -71,8 +99,18 @@ def recap_facts(detail, teammates, representative, registered_only=False):
             else:
                 item["first_blood"] = {"seconds": seconds, "killer": names.get(killer, "Unknown"),
                                        "victim": names.get(victim, "Unknown")}
-        multi = [{"player": names.get(killer, "Unknown"), "kills": count}
-                 for killer, count in round_data["kills"].items() if count >= 3]
+            if weapon and "first_blood" in item:
+                item["first_blood"]["weapon"] = weapon
+        multi = []
+        for killer, count in round_data["kills"].items():
+            if count < 3:
+                continue
+            play = {"player": names.get(killer, "Unknown"), "kills": count}
+            if len(round_data["opponents"].get(killer, ())) >= 5:
+                play["ace"] = True
+            if killer in round_data["weapons"]:
+                play["weapon_kills"] = dict(round_data["weapons"][killer])
+            multi.append(play)
         if multi:
             item["multikills"] = multi
         if len(item) > 1:
@@ -98,29 +136,47 @@ def _featured_rounds(highlights):
     return sorted(highlights, key=priority)[:2]
 
 
-def local_matchfeed_recap(detail, teammates, representative, context_text=""):
+def local_matchfeed_recap(detail, teammates, representative, context_text="", tone="no_filter"):
     facts = recap_facts(detail, teammates, representative, registered_only=True)
     map_name = facts["map"] or "the map"
     headline = f"{map_name} match recap"
     story = []
+    dry = normalize_tone(tone) in ("harsh", "no_filter")
     for item in _featured_rounds(facts["round_highlights"]):
         number = item["round"]
         multikills = item.get("multikills")
         if multikills:
             play = max(multikills, key=lambda play: play["kills"])
             name, kills = play["player"], play["kills"]
+            play_name = "ace" if play.get("ace") and kills == 5 else f"{kills}K"
+            weapons = play.get("weapon_kills", {})
+            weapon = next(iter(weapons)) if len(weapons) == 1 and sum(weapons.values()) == kills else None
             if not story:
-                headline = f"{name}'s {kills}K on {map_name}"
-            sentence = f"{name} found {kills} kills in round {number}"
+                headline = f"{name}'s {weapon + ' ' if weapon else ''}{play_name} steals the show"
+            sentence = f"{name} dropped {'an' if play_name == 'ace' else 'a'} {play_name} in round {number}"
+            if weapon:
+                sentence += f" with the {weapon}"
+            elif weapons:
+                weapon, weapon_count = max(weapons.items(), key=lambda entry: entry[1])
+                sentence += f", including {weapon_count} with the {weapon}"
+            joke = "The killfeed may need a union rep." if dry else "The killfeed barely had time to reload."
         else:
             first_blood = item.get("first_blood")
             opening = first_blood or item["first_death"]
             action = "landed first blood" if first_blood else "was first down"
             sentence = f"{opening['player']} {action} {opening['seconds']:g} seconds into round {number}"
+            if opening.get("weapon"):
+                sentence += f" with the {opening['weapon']}"
+            if first_blood:
+                joke = "Apparently that peek came with express delivery."
+            else:
+                joke = "Spectator mode got an early booking." if dry else ""
         if "team_won_round" in item:
             outcome = "won" if item["team_won_round"] else "lost"
             sentence += f", and the team {outcome} the round"
         story.append(sentence + ".")
+        if joke:
+            story.append(joke)
     rounds = facts["rounds"] or {}
     if rounds.get("won") is not None and rounds.get("lost") is not None:
         won, lost = rounds["won"], rounds["lost"]
@@ -151,9 +207,13 @@ async def generate_recap(session, api_key, model, detail, teammates, representat
         "model": model,
         "messages": [{"role": "system", "content": (
             "Write one entertaining Valorant match recap for a private group of adult friends, "
-            "in about 60 to 100 words, or shorter when few plays are available. " + TONE_PROMPTS[normalize_tone(tone)] + " "
-            "Lead with the most memorable play or its recent storyline. Describe one or two specific plays "
-            "from round_highlights, using the round numbers. Mention who made the play and what actually happened. "
+            "in about 75 to 115 words, or shorter when few plays are available. " + TONE_PROMPTS[normalize_tone(tone)] + " "
+            "Write like VALORANT friends debriefing after queue. Work short jokes into the play-by-play throughout, "
+            "within the selected tone. Aim the jokes at gameplay and decisions. "
+            "Use natural VALORANT terms such as first blood, 3K and 4K. Use ace only when a play has ace=true. "
+            "Lead with the standout play and describe up to two plays with the round number and player. "
+            "Name exact weapons from weapon and weapon_kills. Call it a single-weapon multikill only if all its kills "
+            "are recorded with that weapon. For mixed weapons, attribute only the recorded kills to each weapon. "
             "Connect a play to a round outcome only when team_won_round is provided. "
             "Keep the final round result brief and omit individual combat score, damage, ACS, ADR, "
             "shot counts and lists of player totals. Include a number only when it serves the story. "
