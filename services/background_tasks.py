@@ -15,6 +15,10 @@ from services.matchfeed_context import matchfeed_recap_context
 from utils.recap_tones import normalize_tone
 
 
+MATCHFEED_POLL_SECONDS = 120
+MATCHFEED_CACHE_SECONDS = 100
+
+
 async def queue_reminder_loop(*, client, load_queue_schedules, build_lineup_reminder, next_queue_start, save_queue_schedules):
     await client.wait_until_ready()
     while not client.is_closed():
@@ -165,7 +169,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
             rank_states = load_rank_states()
         except JsonStoreError as exc:
             print(f"Match feed state is unavailable: {exc}")
-            await asyncio.sleep(300)
+            await asyncio.sleep(MATCHFEED_POLL_SECONDS)
             continue
         rank_state_updates = {}
         rank_changes = []
@@ -194,7 +198,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                     try:
                         rank_data = await cached_api(
                             f"/valorant/v3/mmr/{region}/pc/{quote(account['name'])}/{quote(account['tag'])}",
-                            240,
+                            MATCHFEED_CACHE_SECONDS,
                         )
                         current = (rank_data.get("current") or {}) if isinstance(rank_data, dict) else {}
                         tier = current.get("tier") or {}
@@ -231,7 +235,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                     try:
                         history = await cached_api(
                             f"/valorant/v1/stored-matches/{region}/{quote(account['name'])}/{quote(account['tag'])}",
-                            240, mode="competitive", size=10,
+                            MATCHFEED_CACHE_SECONDS, mode="competitive", size=10,
                         )
                     except Exception as exc:
                         print(f"Match feed history failed for {account['name']}#{account['tag']}: {exc}")
@@ -437,4 +441,4 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                     save_rank_states(rank_states)
         except Exception as exc:
             print(f"Match feed poll failed: {exc}")
-        await asyncio.sleep(max(1, 300 - (loop.time() - cycle_started)))
+        await asyncio.sleep(max(1, MATCHFEED_POLL_SECONDS - (loop.time() - cycle_started)))
