@@ -392,10 +392,11 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
                 tag_row += 1
                 tx = player_name_x
             tag_key = tag.split(" x", 1)[0]
-            tag_colour, tag_text = PLAY_TAG_STYLES.get(tag_key, ((68, 68, 78), (235, 235, 240)))
+            tag_colour, tag_text, *tag_opacity = PLAY_TAG_STYLES.get(tag_key, ((68, 68, 78), (235, 235, 240)))
             tag_y = y + 54 + tag_row * 32
             draw_soft_box(image, (tx, tag_y, tx + tw, tag_y + 30), tag_colour,
-                          opacity=88, radius=5, outline=(*tag_text, 105))
+                          opacity=tag_opacity[0] if tag_opacity else 88, radius=5,
+                          outline=(*tag_text, 105) if not tag_opacity else None)
             text_bbox = tag_font.getbbox(tag, anchor="mm")
             text_center_offset = (text_bbox[1] + text_bbox[3]) / 2
             draw.text((tx + tw / 2, tag_y + 15 - text_center_offset),
