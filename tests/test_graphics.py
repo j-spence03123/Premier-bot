@@ -125,14 +125,14 @@ def test_team_killer_prefers_actual_team_kills_over_friendly_fire():
     assert "TEAM KILLER" not in tags["Red-1"]
 
 
-def test_wall_hugger_goes_to_lowest_headshot_rate():
+def test_body_shooter_goes_to_lowest_headshot_rate():
     players = [_tag_player(i, headshots=2 if i == 3 else 10) for i in range(5)]
     enemies = [_tag_player(i, team="Blue") for i in range(5)]
 
     tags = _tags_for(players, enemies)
 
-    assert "WALL HUGGER" in tags["Red-3"]
-    assert sum("WALL HUGGER" in player_tags for player_tags in tags.values()) == 1
+    assert "BODY SHOOTER" in tags["Red-3"]
+    assert sum("BODY SHOOTER" in player_tags for player_tags in tags.values()) == 1
 
 
 def test_passenger_is_the_next_low_scorer_after_the_lvp():

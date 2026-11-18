@@ -164,7 +164,7 @@ def _build_tracked(detail, queued_players, all_teammates, round_count, kills_per
         elif not most_team_kills and most_friendly_fire >= 100 and _friendly_fire(p) == most_friendly_fire:
             tags.append("TEAM KILLER")
         if highest_hs >= 30 and headshot_rates.get(puuid) == highest_hs: tags.append("DINK MACHINE")
-        if lowest_hs <= 15 and headshot_rates.get(puuid) == lowest_hs: tags.append("WALL HUGGER")
+        if lowest_hs <= 15 and headshot_rates.get(puuid) == lowest_hs: tags.append("BODY SHOOTER")
         if most_assists >= 8 and assists_by_id.get(puuid, 0) == most_assists: tags.append("ASSIST KING")
         if highest_adr >= 160 and damage_by_id.get(puuid, 0) == highest_adr: tags.append("DAMAGE DEALER")
         if round_count >= 10 and ((st.get("deaths", 0) / round_count) <= 0.45) and st.get("deaths", 0) == lowest_deaths:
