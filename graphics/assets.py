@@ -31,18 +31,27 @@ MATCH_FONT_DIR = Path(__file__).resolve().parents[1] / "assets" / "fonts"
 COLS = [("ACS", 500), ("K", 565), ("D", 610), ("A", 655), ("+/-", 715), ("K/D", 780), ("ADR", 845), ("HS%", 910), ("FB", 965)]
 GREY = (150, 162, 175)
 WHITE = (240, 244, 248)
+# Tag chip styles: (box colour, text colour[, box opacity]). Each tag gets its own hue so
+# chips are recognisable at a glance; ACE and TEAM KILLER use a solid box to stand out.
 PLAY_TAG_STYLES = {
-    "MVP": ((109, 79, 38), (255, 214, 128)),
-    "LVP": ((105, 39, 45), (255, 151, 157)),
-    "VICTIM": ((67, 68, 78), (211, 214, 224)),
-    "ACE": ((141, 91, 32), (255, 223, 132)),
-    "QUAD": ((119, 93, 33), (255, 218, 119)),
-    "ENTRY": ((39, 78, 122), (163, 205, 255)),
-    "DINK MACHINE": ((89, 59, 126), (219, 183, 255)),
-    "ASSIST KING": ((35, 100, 91), (153, 235, 214)),
-    "DAMAGE DEALER": ((137, 68, 37), (255, 187, 143)),
-    "SURVIVOR": ((48, 98, 63), (170, 237, 178)),
-    "CLUTCH": ((123, 55, 92), (255, 172, 218)),
+    "MVP": ((120, 90, 20), (255, 210, 80)),             # gold
+    "ACE": ((255, 196, 60), (40, 26, 0), 235),          # solid gold
+    "QUAD": ((110, 104, 20), (245, 240, 110)),          # lemon
+    "ECO FRAUD": ((70, 105, 15), (196, 245, 90)),       # lime
+    "SURVIVOR": ((25, 105, 50), (120, 235, 145)),       # green
+    "ASSIST KING": ((15, 100, 90), (110, 240, 215)),    # teal
+    "OPERATOR": ((15, 85, 115), (110, 220, 255)),       # cyan
+    "ENTRY": ((30, 60, 140), (140, 175, 255)),          # blue
+    "PLANTER": ((65, 45, 150), (185, 165, 255)),        # indigo
+    "DINK MACHINE": ((105, 40, 140), (225, 160, 255)),  # violet
+    "CLUTCH": ((140, 30, 120), (255, 130, 230)),        # magenta
+    "BAITED": ((135, 35, 75), (255, 140, 180)),         # rose
+    "DAMAGE DEALER": ((145, 60, 15), (255, 160, 90)),   # orange
+    "LVP": ((130, 25, 25), (255, 110, 110)),            # red
+    "TEAM KILLER": ((200, 30, 30), (255, 255, 255), 235),  # solid red
+    "BODY SHOOTER": ((110, 60, 25), (225, 150, 85)),    # copper
+    "PASSENGER": ((100, 92, 70), (235, 220, 180)),      # sand
+    "VICTIM": ((70, 72, 80), (205, 208, 218)),          # grey
 }
 
 
