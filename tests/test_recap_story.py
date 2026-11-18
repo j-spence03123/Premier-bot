@@ -64,12 +64,12 @@ def test_facts_packet_precomputes_every_number():
     assert lines[2] == "SECOND_ANGLE: the team won 0 rounds in the second half (0-6)"
     assert "HALVES: first half 5-7, second half 0-6" in lines
     femboy = next(line for line in lines if line.startswith("- femboy (Jett):"))
-    assert "18/16/2 (1.12 KD)" in femboy and "205 ACS" in femboy and "clutches 0/1" in femboy
+    assert "18/16/2 (1.12 KD)" in femboy and "205 ACS" in femboy and "clutches" not in femboy
     assert "after round 1: 13/16 (0.81 KD)" in femboy and "best weapon Sheriff (6 kills)" not in femboy
     ria = next(line for line in lines if line.startswith("- ria (Sage):"))
     assert "7/17/5 (0.41 KD)" in ria and "115 ACS" in ria and "best weapon Odin (3 kills)" in ria
     assert "- femboy ace in round 1 (Sheriff)" in lines and "- ria 3K in round 12 (Odin)" in lines
-    assert "SQUAD_AVG_ACS: 160" in lines and "TOGETHER: 62 games" in lines
+    assert "TOGETHER: 62 games" in lines and "SQUAD_AVG_ACS" not in packet
     assert "Rando0" not in packet and "Enemy0" not in packet
     assert players["femboy"]["after_big_round"]["kd"] == "0.81"
 
@@ -137,7 +137,7 @@ def test_validator_rejects_invented_numbers_and_strangers():
     formerly_banned = dict(good, body="Friend struggled to a 5-13 loss despite everything." + padding)
     assert validate_recap(formerly_banned, packet, names={"Friend"})[1] == []
     stranger = dict(good, body="Friend and Stranger lost 5-13." + padding)
-    assert "mentioned players not in PLAYERS" in validate_recap(stranger, packet, names={"Friend"},
+    assert "mentioned players not in FEATURED or ALSO PLAYED" in validate_recap(stranger, packet, names={"Friend"},
                                                                  other_names={"Stranger"})[1]
     long_headline = dict(good, headline="ONE TWO THREE FOUR FIVE SIX SEVEN EIGHT NINE")
     assert any("headline" in p for p in validate_recap(long_headline, packet)[1])
@@ -153,3 +153,41 @@ def test_body_allows_up_to_200_words():
     assert validate_recap({"headline": "HAVEN", "body": body(200)}, packet)[1] == []
     problems = validate_recap({"headline": "HAVEN", "body": body(201)}, packet)[1]
     assert problems == ["the body had 201 words; it must be 70-200 words"]
+
+
+def _summit_squad():
+    """The five-stack from the 13-11 Summit card that read like a scoreboard."""
+    rows = [("kitty meow meow", "Clove", 14, 17, 9, 162), ("Sugoicore", "Yoru", 29, 16, 4, 315),
+            ("XxDeviousMoneyXx", "Harbor", 13, 18, 12, 160), ("AbnormalUNC", "Jett", 20, 15, 6, 245),
+            ("Soupreme", "Chamber", 18, 14, 7, 212)]
+    return [{"puuid": f"s{i}", "name": name, "team_id": "Red", "agent": {"name": agent},
+             "is_smurf": name == "AbnormalUNC",
+             "stats": {"kills": k, "deaths": d, "assists": a, "score": acs * 24}}
+            for i, (name, agent, k, d, a, acs) in enumerate(rows)]
+
+
+def test_five_stack_packet_features_only_the_story_players_and_drops_noise():
+    squad = _summit_squad()
+    winners = ["Red"] * 5 + ["Blue"] * 7 + ["Red"] * 8 + ["Blue"] * 4
+    detail = {"players": squad, "metadata": {"map": {"name": "Summit"}},
+              "teams": [{"team_id": "Red", "won": True, "rounds": {"won": 13, "lost": 11}}, {"team_id": "Blue"}],
+              "rounds": [{"id": i, "winning_team": w} for i, w in enumerate(winners)], "kills": []}
+    facts = recap_facts(detail, squad, squad[0], registered_only=True)
+    packet, _ = build_facts_packet(detail, squad, squad[0], facts, squad_context={"games_together": 1})
+    lines = packet.splitlines()
+    assert lines[1].startswith("STORY_ANGLE: the team trailed 5-7 at halftime and came back to win 13-11")
+    featured = [line for line in lines if line.startswith("- ")]
+    assert [line.split(" (")[0] for line in featured] == ["- Sugoicore", "- XxDeviousMoneyXx"]
+    assert "ALSO PLAYED: kitty meow meow (Clove), AbnormalUNC (Jett), Soupreme (Chamber)" in lines
+    assert "TOGETHER" not in packet and "SQUAD_AVG_ACS" not in packet
+
+
+def test_validator_rejects_a_player_by_player_rundown():
+    names = {"One", "Two", "Three", "Four"}
+    packet = "RESULT: Victory 13-11 on Summit"
+    padding = " This padding has no figures and exists only to reach the minimum length for a body." * 6
+    rundown = {"headline": "SUMMIT", "body": "One carried, Two helped, Three tried and Four existed." + padding}
+    assert validate_recap(rundown, packet, names=names)[1] == [
+        "named 4 players; tell one story about at most 3, not a player-by-player rundown"]
+    story = dict(rundown, body="One carried while Two watched." + padding)
+    assert validate_recap(story, packet, names=names)[1] == []

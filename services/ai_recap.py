@@ -336,14 +336,19 @@ Return JSON only: {{"headline": "...", "body": "..."}}
 
 HEADLINE: ALL CAPS, max 8 words, a joke built on STORY_ANGLE. Name a player or the map.
 
-BODY: one paragraph, 5-9 sentences, 90-200 words.
-- Open with the most notable player.
-- Write player names exactly as given in PLAYERS, without "@". Mention only players listed in PLAYERS.
-- Refer to players by name, never with he/she/him/her.
-- Every sentence includes at least one concrete number from FACTS.
-- Build the paragraph around STORY_ANGLE. Use at most one other context item (SECOND_ANGLE, RANK, STREAK,
-  HISTORY or TOGETHER). Never list context items.
+BODY: one paragraph, 5-9 sentences, 90-200 words, written the way a friend would tell the story of the game
+in the squad's Discord. It must read like a story, not a scoreboard.
+- Tell ONE story: STORY_ANGLE. Open with the player at the center of it and keep coming back to them.
+- Talk about the FEATURED players only (at most 3). ALSO PLAYED players can get a passing mention at most.
+  Never go player by player.
+- Never recite a stat line. Pick the one or two numbers that prove each point and build a joke around them;
+  a sentence with no numbers is fine when it lands the joke.
+- Explain what the numbers meant for the game (who carried, where it fell apart), don't just report them.
+- Every joke must make literal sense for what happened in this match, ideally using VALORANT itself (the
+  agent's kit, the map, reports, eco rounds). If a line sounds clever but you couldn't say what it means, cut it.
+- Use at most one other context item (SECOND_ANGLE, RANK, LORE or TOGETHER). Never list context items.
 - Use the LORE label at most once, and only if LORE is provided.
+- Write player names exactly as given, without "@". Refer to players by name, never with he/she/him/her.
 - {result_rule}
 - Finish with a punchline image or metaphor, not a summary.
 
@@ -358,7 +363,7 @@ RECAP_EXAMPLES = (
 STORY_ANGLE: Spam ranked up to Diamond 1 yesterday, then went 7/18/7 (0.39 KD) in this loss
 SECOND_ANGLE: Kevin took 3 first bloods but finished at 0.82 KD
 HALVES: first half 6-6, second half 2-7
-PLAYERS:
+FEATURED:
 - Kevin (Jett): 14/17/4 (0.82 KD), 198 ACS, 3 first bloods, clutches 0/2, first half 10/9, second half 4/8, best weapon Vandal (9 kills)
 - Spam (Chamber): 7/18/7 (0.39 KD), 121 ACS, 1 first blood, clutches 0/1, first half 5/8, second half 2/10, best weapon Operator (5 kills)
 MULTIKILLS:
@@ -377,7 +382,7 @@ RANK: Spam ranked up from Platinum 3 to Diamond 1 yesterday""",
 STORY_ANGLE: Kevin aced round 1 with the Sheriff, then went 0.81 KD for the rest of the match
 SECOND_ANGLE: the team won 0 rounds in the second half (0-6)
 HALVES: first half 5-7, second half 0-6
-PLAYERS:
+FEATURED:
 - Kevin (Jett): 18/16/2 (1.12 KD), 205 ACS, 2 first bloods, clutches 0/4, first half 12/7, second half 6/9, after round 1: 13/16 (0.81 KD), best weapon Vandal (8 kills)
 - ria (Sage): 7/17/5 (0.41 KD), 115 ACS, 0 first bloods, clutches 0/1, first half 5/9, second half 2/8, best weapon Odin (4 kills)
 MULTIKILLS:

@@ -274,7 +274,7 @@ async def test_registered_only_recap_omits_other_players_and_events():
 
     assert await generate_recap(session, "key", "model", detail, [registered], registered, registered_only=True)
     messages = session.request[1]["json"]["messages"]
-    assert "Mention only players listed in PLAYERS" in messages[0]["content"]
+    assert "Talk about the FEATURED players only" in messages[0]["content"]
     packet = messages[-1]["content"]
     assert "UnlinkedTeammate" not in packet and "EnemyName" not in packet
 

@@ -11,6 +11,8 @@ HEADLINE_MAX_WORDS = 8
 BODY_MIN_WORDS = 70
 BODY_MAX_WORDS = 200
 BODY_MAX_CHARS = 1500
+MAX_FEATURED = 3
+TOGETHER_MINIMUM = 10
 
 _UNITS = {
     "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
@@ -232,6 +234,25 @@ def pick_story_angles(facts, players, recap_context=None, squad_context=None, li
     return list(dict.fromkeys(text for _, text in ranked))[:limit]
 
 
+def featured_players(players, angles, limit=MAX_FEATURED):
+    """The few players the recap should be about: those in the angles, then the best and worst games."""
+    def named(name):
+        return any(re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", angle) for angle in angles)
+
+    if len(players) <= limit:
+        return list(players)
+    chosen = [name for name in players if named(name)]
+    rated = [name for name in players if players[name].get("acs") is not None]
+    if rated:
+        chosen.append(max(rated, key=lambda name: players[name]["acs"]))
+    kd_rated = [name for name in players if players[name].get("kd") is not None]
+    if kd_rated:
+        worst = min(kd_rated, key=lambda name: float(players[name]["kd"]))
+        if float(players[worst]["kd"]) < 0.9:
+            chosen.append(worst)
+    return list(dict.fromkeys(chosen))[:limit] or list(players)[:limit]
+
+
 def build_facts_packet(detail, teammates, representative, facts, recap_context=None, squad_context=None):
     """Return the text packet sent to the model and the derived per-player data."""
     outcome, won, lost = _outcome(facts)
@@ -270,6 +291,7 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
         players[name] = info
 
     angles = pick_story_angles(facts, players, recap_context, squad_context)
+    featured = featured_players(players, angles)
     lines = []
     if outcome:
         word = {"win": "Victory", "loss": "Defeat", "draw": "Draw"}[outcome]
@@ -284,26 +306,29 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
     if halves:
         (h1w, h1l), (h2w, h2l) = halves["first_half"], halves["second_half"]
         lines.append(f"HALVES: first half {h1w}-{h1l}, second half {h2w}-{h2l}")
-    if players:
-        lines.append("PLAYERS:")
-    for name, info in players.items():
+    if featured:
+        lines.append("FEATURED:")
+    angle_text = " ".join(angles)
+    for name in featured:
+        info = players[name]
         parts = []
         if info.get("kda_text"):
             parts.append(info["kda_text"])
         if info.get("acs") is not None:
             parts.append(f"{info['acs']} ACS")
-        if "first_bloods" in info:
-            fb = info["first_bloods"]
-            parts.append(f"{fb} first blood{'s' if fb != 1 else ''}")
-        if info.get("clutches"):
-            parts.append(f"clutches {info['clutches'][0]}/{info['clutches'][1]}")
+        fb = info.get("first_bloods", 0)
+        if fb >= 3:
+            parts.append(f"{fb} first bloods")
+        won_clutches, tried = info.get("clutches") or (0, 0)
+        if tried >= 3 or won_clutches >= 2:
+            parts.append(f"clutches {won_clutches}/{tried}")
         if info.get("halves"):
             (k1, d1), (k2, d2) = info["halves"]
             parts.append(f"first half {k1}/{d1}, second half {k2}/{d2}")
         after = info.get("after_big_round")
-        if after:
+        if after and after["kd"] and after["kd"] in angle_text:
             parts.append(f"after round {after['play']['round']}: {after['kills']}/{after['deaths']}"
-                         + (f" ({after['kd']} KD)" if after["kd"] else ""))
+                         f" ({after['kd']} KD)")
         if info.get("best_weapon"):
             weapon, count = info["best_weapon"]
             parts.append(f"best weapon {weapon} ({count} kills)")
@@ -311,35 +336,31 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
             parts.append("playing on a smurf account")
         agent = f" ({info['agent']})" if info.get("agent") else ""
         lines.append(f"- {name}{agent}: " + ", ".join(parts) if parts else f"- {name}{agent}")
-    if plays:
+    others = [name for name in players if name not in featured]
+    if others:
+        lines.append("ALSO PLAYED: " + ", ".join(
+            f"{name} ({players[name]['agent']})" if players[name].get("agent") else name for name in others))
+    shown = [play for play in plays if play["player"] in featured][:3]
+    if shown:
         lines.append("MULTIKILLS:")
-        for play in plays[:4]:
+        for play in shown:
             label = "ace" if play["ace"] else f"{play['kills']}K"
             gear = f" ({play['weapon']})" if play["weapon"] else ""
             lines.append(f"- {play['player']} {label} in round {play['round']}{gear}")
-    acs_values = [info["acs"] for info in players.values() if info.get("acs") is not None]
-    if len(acs_values) >= 2:
-        lines.append(f"SQUAD_AVG_ACS: {round(sum(acs_values) / len(acs_values))}")
     for row in recap_context or []:
         name = row.get("player")
-        if name not in players:
+        if name not in featured:
             continue
         for change in row.get("rank_changes") or []:
             lines.append(f"RANK: {name} ranked {change['direction']} from {change['from_rank']} to "
                          f"{change['to_rank']} {change['when']}")
-        streak = row.get("streak_entering_match")
-        if streak:
-            results = "wins" if streak["outcome"] == "win" else "losses"
-            lines.append(f"STREAK: {name} came in on {streak['games']} straight {results}")
     squad_context = squad_context or {}
-    if squad_context.get("history"):
-        lines.append(f"HISTORY: {squad_context['history']}")
     callback = squad_context.get("callback")
     if callback:
         who = f" -> {callback['player']}" if callback.get("player") else ""
         lines.append(f"LORE: \"{callback['label']}\" ({callback['kind']}){who}; "
                      f"evidence: {callback['match_evidence']}")
-    if squad_context.get("games_together"):
+    if (squad_context.get("games_together") or 0) >= TOGETHER_MINIMUM:
         lines.append(f"TOGETHER: {squad_context['games_together']} games")
     return "\n".join(lines), players
 
@@ -384,7 +405,12 @@ def validate_recap(output, packet, *, names=(), other_names=(), labels=()):
         plain = re.sub(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", " ", plain, flags=re.IGNORECASE)
     strangers = sorted(n for n in other_names if re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", plain, re.I))
     if strangers:
-        problems.append("mentioned players not in PLAYERS")
+        problems.append("mentioned players not in FEATURED or ALSO PLAYED")
+    story = f"{headline} {body}"
+    mentioned = [n for n in names if re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", story, re.IGNORECASE)]
+    if len(mentioned) > MAX_FEATURED:
+        problems.append(f"named {len(mentioned)} players; tell one story about at most {MAX_FEATURED}, "
+                        "not a player-by-player rundown")
     if problems:
         return None, problems
     return {"headline": headline, "recap": body}, []
