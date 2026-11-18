@@ -24,15 +24,15 @@ def advance(feed, members, index, score=(5, 13), map_name="Haven", highlights=()
 def test_lineup_history_uses_discord_members_and_verified_map_results():
     feed = {}
     duo = {"1": "One", "2": "Two"}
-    assert not advance(feed, duo, 1)[0]
-    assert not advance(feed, duo, 2, map_name="Ascent")[0]
-    assert not advance(feed, duo, 3)[0]
-    assert not advance(feed, {"1": "One", "3": "Three"}, 4)[0]
+    assert advance(feed, duo, 1)[0] == {"games_together": 1}
+    assert "history" not in advance(feed, duo, 2, map_name="Ascent")[0]
+    assert "history" not in advance(feed, duo, 3)[0]
+    assert advance(feed, {"1": "One", "3": "Three"}, 4)[0] == {"games_together": 1}
     assert "third recorded loss in a row on Haven" in advance(feed, {"1": "Alt", "2": "Two"}, 5)[0]["history"]
     assert "broke a run of 3 recorded losses on Haven" in advance(feed, duo, 6, score=(13, 9))[0]["history"]
     for game in range(7, 11):
-        assert not advance(feed, duo, game, score=(13, 11))[0]
-    assert advance(feed, duo, 11, score=(13, 11))[0]["history"] == "This was the 10th match recorded for this lineup."
+        assert "history" not in advance(feed, duo, game, score=(13, 11))[0]
+    assert advance(feed, duo, 11, score=(13, 11))[0] == {"history": "This was the 10th match recorded for this lineup.", "games_together": 10}
 
 
 def test_callback_requires_the_selected_player_map_and_event_then_observes_cooldown():

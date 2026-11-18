@@ -39,6 +39,7 @@ class Settings:
     font_dir: Path
     groq_api_key: Optional[str]
     groq_model: str
+    groq_recap_model: str
     competitive_maps: Tuple[str, ...]
 
 
@@ -91,6 +92,7 @@ def load_settings(environ=None) -> Settings:
         font_dir=Path(__file__).resolve().parent / "assets" / "fonts",
         groq_api_key=(environ.get("GROQ_API_KEY") or "").strip() or None,
         groq_model=(environ.get("GROQ_MODEL") or "qwen/qwen3.8-27b").strip(),
+        groq_recap_model=(environ.get("GROQ_RECAP_MODEL") or "openai/gpt-oss-120b").strip(),
         competitive_maps=tuple(name.strip() for name in (environ.get("COMPETITIVE_MAPS") or "").split(",")
                                if name.strip()) or DEFAULT_COMPETITIVE_MAPS,
     )
