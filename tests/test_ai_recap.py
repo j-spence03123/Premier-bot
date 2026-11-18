@@ -31,6 +31,20 @@ class FakeSession:
         return self.response
 
 
+FILLER = ("The rest of the paragraph is padding written without a single figure so the validator only sees "
+          "the numbers placed on purpose, which keeps these tests focused on grounding rather than prose. ")
+
+
+def recap_response(headline="", body=""):
+    return {"choices": [{"finish_reason": "stop", "message": {
+        "content": json.dumps({"headline": headline, "body": body}),
+    }}]}
+
+
+def grounded(opening):
+    return opening + " " + FILLER * 3
+
+
 @pytest.mark.asyncio
 async def test_session_summary_receives_match_order_and_rr_coverage():
     http = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {
@@ -48,28 +62,34 @@ async def test_session_summary_receives_match_order_and_rr_coverage():
 
 
 @pytest.mark.asyncio
-async def test_groq_recap_uses_match_facts_and_extracts_text():
-    session = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop",
-        "message": {"content": '{"headline":"A wild match", "recap":"A match recap."}'}}]}))
-    player = {"puuid": "p1", "name": "Player", "team_id": "Red", "stats": {"kills": 12}}
+async def test_groq_recap_sends_facts_packet_and_returns_validated_text():
+    body = grounded("Player went 12 kills deep on Ascent.")
+    session = FakeSession(FakeResponse(200, recap_response("A night on Ascent", body)))
+    player = {"puuid": "p1", "name": "Player", "team_id": "Red", "stats": {"kills": 12, "deaths": 10}}
     detail = {"players": [player], "metadata": {"map": {"name": "Ascent"}}, "teams": [], "kills": []}
 
-    result = await generate_recap(session, "test-key", "qwen/qwen3.8-27b", detail, [player], player)
+    result = await generate_recap(session, "test-key", "openai/gpt-oss-120b", detail, [player], player)
 
-    assert result == {"headline": "A wild match", "recap": "A match recap."}
+    assert result == {"headline": "A NIGHT ON ASCENT", "recap": " ".join(body.split())}
     url, request = session.request
     assert url == "https://api.groq.com/openai/v1/chat/completions"
     assert request["headers"]["Authorization"] == "Bearer test-key"
-    assert request["json"]["model"] == "qwen/qwen3.8-27b"
-    assert "Ascent" in request["json"]["messages"][1]["content"]
+    payload = request["json"]
+    assert payload["model"] == "openai/gpt-oss-120b"
+    assert payload["reasoning_effort"] == "low"
+    assert payload["temperature"] == 0.85
+    assert payload["response_format"] == {"type": "json_object"}
+    packet = payload["messages"][-1]["content"]
+    assert packet.startswith("FACTS:") and "Ascent" in packet and "- Player:" in packet
+    # Both few-shot examples are sent as user/assistant pairs ahead of the real packet.
+    assert [m["role"] for m in payload["messages"]] == ["system", "user", "assistant", "user", "assistant", "user"]
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("tone,expected", [("kind", "warm"), ("harsh", "blunt"),
                                            ("constructive", "actionable"), ("no_filter", "profane")])
 async def test_recap_prompt_uses_selected_tone(tone, expected):
-    session = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop",
-        "message": {"content": '{"headline":"Match", "recap":"Recap."}'}}]}))
+    session = FakeSession(FakeResponse(200, recap_response("Match", grounded("Quiet."))))
     await generate_recap(session, "key", "model", {}, [], {}, tone=tone)
     prompt = session.request[1]["json"]["messages"][0]["content"]
     assert expected in prompt
@@ -96,10 +116,10 @@ async def test_invalid_generated_fields_fall_back():
 
 @pytest.mark.asyncio
 async def test_transient_server_error_retries_and_returns_recap(monkeypatch):
+    body = grounded("Nobody wrote anything down.")
     responses = iter([
         FakeResponse(503, {}),
-        FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {
-            "content": '{"headline":"Match headline", "recap":"Match recap."}'}}]}),
+        FakeResponse(200, recap_response("Match headline", body)),
     ])
 
     class RetryingSession:
@@ -111,8 +131,34 @@ async def test_transient_server_error_retries_and_returns_recap(monkeypatch):
 
     monkeypatch.setattr("services.ai_recap.asyncio.sleep", skip_sleep)
     assert await generate_recap(RetryingSession(), "key", "model", {}, [], {}) == {
-        "headline": "Match headline", "recap": "Match recap."
+        "headline": "MATCH HEADLINE", "recap": " ".join(body.split())
     }
+
+
+@pytest.mark.asyncio
+async def test_invented_number_is_retried_with_feedback_then_accepted():
+    player = {"puuid": "p1", "name": "Friend", "team_id": "Red", "stats": {"kills": 13, "deaths": 16}}
+    detail = {"players": [player], "metadata": {"map": {"name": "Haven"}},
+              "teams": [{"team_id": "Red", "rounds": {"won": 5, "lost": 13}}]}
+    bad = recap_response("FRIEND HITS 40 BOMBS", grounded("Friend dropped 412 ADR in a 5-13 loss."))
+    good = recap_response("HAVEN HAUNTS FRIEND", grounded("Friend went 13/16 in a 5-13 loss on Haven."))
+    responses = iter([FakeResponse(200, bad), FakeResponse(200, good)])
+    sent = []
+
+    class Session:
+        def post(self, url, **kwargs):
+            sent.append(kwargs["json"]["messages"])
+            return next(responses)
+
+    result = await generate_recap(Session(), "key", "model", detail, [player], player)
+    assert result["headline"] == "HAVEN HAUNTS FRIEND"
+    assert "numbers not in FACTS: 40, 412" in sent[1][-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_two_failed_validations_fall_back_to_local_recap():
+    session = FakeSession(FakeResponse(200, recap_response("TOO SHORT", "Friend went 99 for 1.")))
+    assert await generate_recap(session, "key", "model", {}, [], {}) is None
 
 
 def test_match_and_round_times_are_converted_to_seconds():
@@ -164,66 +210,53 @@ def test_recap_uses_verified_weapons_and_ace():
     assert "Paint Shells" not in recap
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("story, expected", [
-    ("Friend dropped a Sheriff 4K. The team lost Haven 5–13.", "Friend dropped a Sheriff 4K."),
-    ("Friend dropped a 4K. The team lost Haven 5–13.", "Friend dropped a 4K."),
-    ("Haven ended 5–13. Friend's Vandal 3K came a round after the Sheriff 4K.", "Haven ended"),
-    ("Friend dropped a Phantom 4K.", None),
-])
-async def test_weapons_are_optional_and_tied_to_verified_multikills(story, expected):
-    player = {"puuid": "p1", "name": "Friend", "team_id": "Red", "stats": {"kills": 9, "deaths": 15}}
-    kills = [
-        {"round": round_id, "time_in_round_in_ms": index * 1000, "killer": player,
-         "weapon": {"name": weapon, "type": "Weapon"}}
-        for round_id, weapon, count in ((0, "Sheriff", 4), (1, "Vandal", 3), (2, "Phantom", 1))
-        for index in range(1, count + 1)
-    ]
-    teams = [{"team_id": "Red", "rounds": {"won": 5, "lost": 13}}, {"team_id": "Blue"}]
-    rounds = [{"id": index, "winning_team": "Red" if index < 5 else "Blue"} for index in range(18)]
-    detail = {"players": [player], "kills": kills, "teams": teams, "rounds": rounds}
-    response = {"choices": [{"finish_reason": "stop", "message": {
-        "content": json.dumps({"headline": "An opening to remember", "recap": story})
-    }}]}
-    http = FakeSession(FakeResponse(200, response))
-    result = await generate_recap(http, "test-key", "test-model", detail, [player], player)
-    if expected:
-        assert result["recap"].startswith(expected)
-    else:
-        assert result is None
-    payload = http.request[1]["json"]["messages"][1]["content"]
-    assert "Sheriff" in payload and "Vandal" in payload and "Phantom" not in payload
-    facts = json.loads(payload)
-    assert facts["half_results"] == {"first_half": [5, 7], "second_half": [0, 6]}
-    assert facts["teammates"][0]["match_kd"] == 0.6
-
-    fallback = local_matchfeed_recap(detail, [player], player)
-    assert fallback["recap"].count("Sheriff") == 1 and "Vandal" not in fallback["recap"]
-    assert "Sheriff" not in fallback["headline"]
-    assert fallback["recap"].index("5–13") < fallback["recap"].index("3K")
-    assert "All 6 rounds after it went the other way" in fallback["recap"]
-    assert "half_results" not in recap_facts({**detail, "rounds": rounds[:-1]}, [player], player)
+def _match_fixture(player, round_winners, moments, map_name="Corrode"):
+    enemies = [{"puuid": f"enemy{index}", "team_id": "Blue"} for index in range(5)]
+    won = round_winners.count("Red")
+    lost = round_winners.count("Blue")
+    return {
+        "players": [player, *enemies],
+        "metadata": {"map": {"name": map_name}},
+        "teams": [{"team_id": "Red", "rounds": {"won": won, "lost": lost}}, {"team_id": "Blue"}],
+        "rounds": [{"id": index, "winning_team": winner} for index, winner in enumerate(round_winners)],
+        "kills": [
+            {"round": number - 1, "time_in_round_in_ms": index * 1000, "killer": player,
+             "victim": enemy, "weapon": {"name": weapon, "type": "Weapon"}}
+            for number, weapon, count in moments
+            for index, enemy in enumerate(enemies[:count], start=1)
+        ],
+    }
 
 
-@pytest.mark.asyncio
-async def test_smurf_context_is_available_but_optional():
-    player = {"puuid": "p1", "name": "Alt", "team_id": "Red",
-              "is_smurf": True, "stats": {"kills": 5, "deaths": 16}}
-    main = {"puuid": "p2", "name": "Main", "team_id": "Red",
-            "stats": {"kills": 2, "deaths": 16}}
-    players = [player, main]
-    detail = {"players": players}
-    http = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {
-        "content": '{"headline":"Rough game","recap":"Alt lost on Haven."}'
-    }}]}))
+def test_lopsided_win_local_story_stays_factual():
+    player = {"puuid": "p1", "name": "DOM", "team_id": "Red", "is_smurf": True,
+              "stats": {"kills": 20, "deaths": 7, "assists": 5, "score": 5445}}
+    detail = _match_fixture(player, ["Red"] * 10 + ["Blue"] * 2 + ["Red"] * 3,
+                            [(9, "Vandal", 4), (14, "Phantom", 1), (15, "Vandal", 4)])
+    factual_story = ("DOM dropped a 4K in the final round with the Vandal. "
+                     "The team led 10–2 at halftime and won 13–2 on Corrode.")
+    assert local_matchfeed_recap(detail, [player], player)["recap"] == factual_story
 
-    assert await generate_recap(http, "test-key", "test-model", detail, players, player)
-    facts = json.loads(http.request[1]["json"]["messages"][1]["content"])
-    alt, normal = facts["teammates"]
-    assert alt["is_smurf"] and alt["poor_smurf_performance"]
-    assert "is_smurf" not in normal
-    recap = local_matchfeed_recap(detail, players, player, tone="harsh")["recap"]
-    assert recap.count("smurf") == 1
+
+def test_partial_round_data_never_labels_a_play_match_winning():
+    player = {"puuid": "p1", "name": "DOM", "team_id": "Red"}
+    detail = _match_fixture(player, ["Red"] * 10 + ["Blue"] * 2 + ["Red"] * 3, [(15, "Vandal", 4)])
+    detail["rounds"].pop(4)
+    facts = recap_facts(detail, [player], player)
+    assert "half_results" not in facts and "match_winning_round" not in facts
+    assert local_matchfeed_recap(detail, [player], player)["recap"] == (
+        "DOM dropped a 4K in round 15 with the Vandal. The team won 13–2 on Corrode."
+    )
+
+
+def test_ace_can_contrast_with_verified_second_half_collapse():
+    player = {"puuid": "p1", "name": "Friend", "team_id": "Red", "stats": {"kills": 13, "deaths": 16}}
+    detail = _match_fixture(player, ["Red"] * 5 + ["Blue"] * 13, [(1, "Sheriff", 5), (11, "Vandal", 3)], "Haven")
+    recap = local_matchfeed_recap(detail, [player], player)
+    assert recap["headline"] == "Friend's ace wasn't enough"
+    assert recap["recap"] == ("Friend dropped an ace in round 1 with the Sheriff. "
+                             "The team lost 5–13 on Haven without winning a round after halftime. "
+                             "Friend still finished the match at 0.81 K/D.")
 
 
 @pytest.mark.asyncio
@@ -237,61 +270,48 @@ async def test_registered_only_recap_omits_other_players_and_events():
                   {"round": 1, "time_in_round_in_ms": 1000, "killer": {"puuid": "p3"}, "victim": {"puuid": "p1"}},
                   {"round": 2, "time_in_round_in_ms": 1000, "killer": {"puuid": "p2"}, "victim": {"puuid": "p3"}},
               ]}
-    response = {"choices": [{"finish_reason": "stop", "message": {
-        "content": '{"headline":"Friend plays Haven", "recap":"Friend fought hard."}'}}]}
-    session = FakeSession(FakeResponse(200, response))
+    session = FakeSession(FakeResponse(200, recap_response("Friend plays Haven", grounded("Friend on Haven."))))
 
     assert await generate_recap(session, "key", "model", detail, [registered], registered, registered_only=True)
     messages = session.request[1]["json"]["messages"]
-    assert "Only discuss named players listed in teammates" in messages[0]["content"]
-    raw = messages[1]["content"]
-    assert "UnlinkedTeammate" not in raw and "EnemyName" not in raw
-    facts = json.loads(raw)
-    assert facts["round_highlights"] == [
-        {"round": 1, "first_blood": {"seconds": 1.0, "player": "Friend"}},
-        {"round": 2, "first_death": {"seconds": 1.0, "player": "Friend"}},
-    ]
+    assert "Mention only players listed in PLAYERS" in messages[0]["content"]
+    packet = messages[-1]["content"]
+    assert "UnlinkedTeammate" not in packet and "EnemyName" not in packet
 
 
 @pytest.mark.asyncio
 async def test_registered_only_rejects_ai_output_naming_another_player():
     registered = {"puuid": "p1", "name": "Friend", "team_id": "Red"}
     detail = {"players": [registered, {"puuid": "p2", "name": "Stranger", "team_id": "Red"}]}
-    response = {"choices": [{"finish_reason": "stop", "message": {
-        "content": '{"headline":"Friend vs Stranger", "recap":"Friend played."}'}}]}
-    session = FakeSession(FakeResponse(200, response))
+    session = FakeSession(FakeResponse(200, recap_response("Friend vs Stranger", grounded("Stranger fought hard."))))
 
-    assert await generate_recap(session, "key", "model", detail, [registered], registered, registered_only=True) is None
+    assert await generate_recap(session, "key", "model", detail, [registered], registered,
+                                registered_only=True) is None
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("metric,accepted", [("115 ACS", True), ("ACS of 115", True), ("116 ACS", False),
-                                            ("115 ADR", False), ("90 damage", False)])
-async def test_only_offered_acs_reaches_the_card(metric, accepted):
-    player = {"name": "SageMain", "team_id": "Red", "stats": {"score": 2070, "kills": 7, "deaths": 17}}
+async def test_packet_precomputes_acs_so_the_model_never_does_arithmetic():
+    player = {"name": "SageMain", "team_id": "Red", "stats": {"score": 5778}}
     detail = {"players": [player], "teams": [{"team_id": "Red", "rounds": {"won": 5, "lost": 13}}]}
-    text = json.dumps({"headline": "Sage had a long night", "recap": f"SageMain finished on {metric}."})
-    http = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {"content": text}}]}))
-    result = await generate_recap(http, "key", "model", detail, [player], player)
-    assert bool(result) == accepted
-    facts = json.loads(http.request[1]["json"]["messages"][1]["content"])
-    assert facts["teammates"] == [{"name": "SageMain", "agent": None, "acs": 115}]
+    http = FakeSession(FakeResponse(200, recap_response("SAGEMAIN", grounded("SageMain had 412 ADR."))))
+    assert await generate_recap(http, "key", "model", detail, [player], player) is None
+    packet = http.request[1]["json"]["messages"][-3]["content"]
+    assert "RESULT: Defeat 5-13" in packet and "321 ACS" in packet
 
 
 @pytest.mark.asyncio
-async def test_quiet_game_omits_routine_stats_and_unrelated_history():
+async def test_quiet_game_omits_unrelated_history():
     player = {"name": "Friend", "team_id": "Red", "stats": {"score": 4600, "kills": 16, "deaths": 15, "assists": 6}}
     detail = {"metadata": {"map": {"name": "Haven"}}, "teams": [{"team_id": "Red", "rounds": {"won": 13, "lost": 9}}]}
     context = [{"player": "Friend", "yesterday": {"wins": 1, "losses": 1, "draws": 0},
                 "previous_match": {"map": "Bind", "score": "10-13", "outcome": "loss"}},
                {"player": "Stranger", "streak_entering_match": {"outcome": "loss", "games": 4}}]
-    recap = {"headline": "Haven holds", "recap": "The squad took Haven 13–9."}
-    http = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(recap)}}]}))
-    assert await generate_recap(http, "key", "model", detail, [player], player, recap_context=context) == recap
-    facts = json.loads(http.request[1]["json"]["messages"][1]["content"])
-    assert facts["teammates"] == [{"name": "Friend", "agent": None}]
-    assert "optional_history" not in facts
-    assert local_matchfeed_recap(detail, [player], player, recap_context=context)["recap"] == "The team won 13–9 on Haven."
+    http = FakeSession(FakeResponse(200, recap_response("Haven holds", grounded("Friend won 13-9 on Haven."))))
+    assert await generate_recap(http, "key", "model", detail, [player], player, recap_context=context)
+    packet = http.request[1]["json"]["messages"][-1]["content"]
+    assert "Stranger" not in packet and "Bind" not in packet
+    assert local_matchfeed_recap(detail, [player], player,
+                                 recap_context=context)["recap"] == "The team won 13–9 on Haven."
 
 
 @pytest.mark.parametrize("other_team,shared", [("red", True), ("blue", False)])
@@ -336,13 +356,16 @@ def test_fallback_selects_one_callback_from_current_rank_streak_and_form_reversa
 
 
 @pytest.mark.asyncio
-async def test_ai_receives_squad_lore_as_optional_data():
-    text = '{"headline":"Haven recap","recap":"The match slipped away."}'
-    http = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {"content": text}}]}))
+async def test_ai_receives_squad_lore_and_games_together_as_facts():
+    body = grounded("Friend lost 7-13 on Haven and the Clutch Allergy is back for game 62.")
+    http = FakeSession(FakeResponse(200, recap_response("HAVEN RECAP", body)))
     context = {"callback": {"label": "Clutch Allergy", "kind": "inside joke", "player": None,
-                            "match_evidence": "The team recorded a loss."}}
-    result = await generate_recap(http, "test-key", "test-model", {}, [], {}, squad_context=context)
-    assert result["recap"] == "The match slipped away."
+                            "match_evidence": "The team recorded a loss."}, "games_together": 62}
+    player = {"name": "Friend", "team_id": "Red"}
+    detail = {"metadata": {"map": {"name": "Haven"}}, "teams": [{"team_id": "Red", "rounds": {"won": 7, "lost": 13}}]}
+    result = await generate_recap(http, "test-key", "test-model", detail, [player], player, squad_context=context)
+    assert "Clutch Allergy" in result["recap"]
     messages = http.request[1]["json"]["messages"]
     assert "Clutch Allergy" not in messages[0]["content"]
-    assert json.loads(messages[1]["content"])["optional_squad_context"] == context
+    packet = messages[-1]["content"]
+    assert 'LORE: "Clutch Allergy" (inside joke)' in packet and "TOGETHER: 62 games" in packet

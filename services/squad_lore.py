@@ -115,15 +115,17 @@ def prepare_squad_context(feed, members, match_id, started, facts):
         "lineups": dict(previous.get("lineups") or {}),
     }
     outcome = _outcome(facts)
+    together = {}
     if len(members) >= 2 and outcome:
         history = _record_lineup(memory["lineups"], members, match_id, started, outcome, facts.get("map"))
+        together = {"games_together": memory["lineups"][json.dumps(sorted(members))]["games"]}
         if history:
-            return memory, {"history": history}, None
+            return memory, {"history": history, **together}, None
     choice = _pick_entry(entries, memory, members, outcome, facts)
     if choice:
         key, callback = choice
-        return memory, {"callback": callback}, key
-    return memory, {}, None
+        return memory, {"callback": callback, **together}, key
+    return memory, together, None
 
 
 def remember_squad_callback(memory, key):

@@ -368,7 +368,7 @@ async def play_match_image(detail, queued_players, all_teammates, representative
         footer=footer, recap_context=recap_context, discord_names=discord_names, squad_context=squad_context,
         map_background_path=map_background_path,
         icon_maps=icon_maps, icon_img=icon_img,
-        session=client.http_session, api_key=SETTINGS.groq_api_key, model=SETTINGS.groq_model,
+        session=client.http_session, api_key=SETTINGS.groq_api_key, model=SETTINGS.groq_recap_model,
         generate_recap=generate_recap, draw_play_result=draw_play_result,
     )
 
