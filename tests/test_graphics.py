@@ -4,7 +4,7 @@ from PIL import Image
 
 from graphics.lineup import render_lineup_card
 from graphics.help_card import render_help_card
-from graphics.match_card import _assign_unique_tags, draw_play_result
+from graphics.match_card import _assign_unique_tags, _build_tracked, draw_play_result
 from graphics.player_history import rank_summary, render_player_history
 from graphics.playbook_card import render_playbook_card, render_strategy_card
 from graphics.rank_change import draw_rank_change_card
@@ -19,16 +19,155 @@ def _png_size(buffer):
 
 def test_tied_tags_go_to_eligible_player_with_fewer_awards():
     players = [
-        {"tags": ["MVP", "ASSIST KING", "CLUTCH x1"]},
-        {"tags": ["ASSIST KING", "CLUTCH x1"]},
+        {"tags": ["MVP", "ASSIST KING", "SURVIVOR"]},
+        {"tags": ["ASSIST KING", "SURVIVOR"]},
         {"tags": ["LVP"]},
     ]
 
     _assign_unique_tags(players)
 
-    assert players[0]["tags"] == ["MVP", "CLUTCH x1"]
+    assert players[0]["tags"] == ["MVP", "SURVIVOR"]
     assert players[1]["tags"] == ["ASSIST KING"]
     assert players[2]["tags"] == ["LVP"]
+
+
+def test_ace_clutch_and_victim_tags_are_shared_between_players():
+    players = [
+        {"tags": ["ACE", "MVP", "CLUTCH x2", "VICTIM"]},
+        {"tags": ["ACE", "MVP", "CLUTCH x1", "VICTIM"]},
+    ]
+
+    _assign_unique_tags(players)
+
+    assert players[0]["tags"] == ["ACE", "MVP", "CLUTCH x2", "VICTIM"]
+    assert players[1]["tags"] == ["ACE", "CLUTCH x1", "VICTIM"]
+
+
+def _tag_player(index, team="Red", score=4000, kills=16, headshots=10, bodyshots=30, friendly_fire=0):
+    return {
+        "puuid": f"{team}-{index}", "name": f"{team} {index}", "tag": "EU", "team_id": team,
+        "behavior": {"friendly_fire": {"incoming": 0, "outgoing": friendly_fire}},
+        "stats": {"kills": kills, "deaths": 14, "assists": 3, "score": score,
+                  "headshots": headshots, "bodyshots": bodyshots, "legshots": 0,
+                  "damage": {"dealt": 2000}},
+    }
+
+
+def _kill(round_number, killer, victim, weapon="Vandal", time=10_000):
+    return {"round": round_number, "time_in_round_in_ms": time,
+            "killer": {"puuid": killer}, "victim": {"puuid": victim},
+            "weapon": {"name": weapon, "type": "Weapon"}}
+
+
+def _tags_for(players, enemies, kills=(), rounds=()):
+    detail = {"players": players + enemies, "kills": list(kills), "rounds": list(rounds)}
+    first_bloods, first_deaths, kills_per_round = {}, {}, {}
+    by_round = {}
+    for event in kills:
+        by_round.setdefault(event["round"], []).append(event)
+        counts = kills_per_round.setdefault(event["round"], {})
+        counts[event["killer"]["puuid"]] = counts.get(event["killer"]["puuid"], 0) + 1
+    for events in by_round.values():
+        first = min(events, key=lambda event: event["time_in_round_in_ms"])
+        first_bloods[first["killer"]["puuid"]] = first_bloods.get(first["killer"]["puuid"], 0) + 1
+        first_deaths[first["victim"]["puuid"]] = first_deaths.get(first["victim"]["puuid"], 0) + 1
+    scores = [p["stats"]["score"] for p in players]
+    tracked = _build_tracked(detail, players, players, 20, kills_per_round, first_bloods, first_deaths,
+                             max(scores), min(scores))
+    return {item["p"]["puuid"]: item["tags"] for item in tracked}
+
+
+def test_baited_operator_and_planter_tags():
+    players = [_tag_player(i) for i in range(5)]
+    enemies = [_tag_player(i, team="Blue") for i in range(5)]
+    kills = [_kill(r, "Blue-0", "Red-1", time=5_000) for r in range(4)]
+    kills += [_kill(r, "Red-2", f"Blue-{r % 5}", weapon="Operator", time=20_000) for r in range(8)]
+    rounds = [{"id": r, "plant": {"player": {"puuid": "Red-3"}}} for r in range(4)]
+
+    tags = _tags_for(players, enemies, kills, rounds)
+
+    assert "BAITED" in tags["Red-1"]
+    assert "OPERATOR" in tags["Red-2"]
+    assert "PLANTER" in tags["Red-3"]
+
+
+def test_operator_needs_enough_operator_kills():
+    players = [_tag_player(i) for i in range(5)]
+    enemies = [_tag_player(i, team="Blue") for i in range(5)]
+    kills = [_kill(r, "Red-2", "Blue-0", weapon="Operator") for r in range(5)]
+
+    tags = _tags_for(players, enemies, kills)
+
+    assert not any("OPERATOR" in player_tags for player_tags in tags.values())
+
+
+def test_eco_fraud_counts_kills_with_a_much_cheaper_loadout():
+    players = [_tag_player(i) for i in range(5)]
+    enemies = [_tag_player(i, team="Blue") for i in range(5)]
+    rounds = [{"id": r, "stats": [
+        {"player": {"puuid": "Red-4"}, "economy": {"loadout_value": 800}},
+        {"player": {"puuid": f"Blue-{r}"}, "economy": {"loadout_value": 4700}},
+    ]} for r in range(3)]
+    kills = [_kill(r, "Red-4", f"Blue-{r}") for r in range(3)]
+
+    tags = _tags_for(players, enemies, kills, rounds)
+
+    assert "ECO FRAUD" in tags["Red-4"]
+
+
+def test_team_killer_prefers_actual_team_kills_over_friendly_fire():
+    players = [_tag_player(i, friendly_fire=300 if i == 1 else 0) for i in range(5)]
+    enemies = [_tag_player(i, team="Blue") for i in range(5)]
+
+    assert "TEAM KILLER" in _tags_for(players, enemies)["Red-1"]
+    tags = _tags_for(players, enemies, [_kill(3, "Red-0", "Red-4")])
+    assert "TEAM KILLER" in tags["Red-0"]
+    assert "TEAM KILLER" not in tags["Red-1"]
+
+
+def test_wall_hugger_goes_to_lowest_headshot_rate():
+    players = [_tag_player(i, headshots=2 if i == 3 else 10) for i in range(5)]
+    enemies = [_tag_player(i, team="Blue") for i in range(5)]
+
+    tags = _tags_for(players, enemies)
+
+    assert "WALL HUGGER" in tags["Red-3"]
+    assert sum("WALL HUGGER" in player_tags for player_tags in tags.values()) == 1
+
+
+def test_passenger_is_the_next_low_scorer_after_the_lvp():
+    scores = [5000, 4800, 4600, 2600, 2000]
+    players = [_tag_player(i, score=score) for i, score in enumerate(scores)]
+    enemies = [_tag_player(i, team="Blue") for i in range(5)]
+
+    tags = _tags_for(players, enemies)
+
+    assert "LVP" in tags["Red-4"]
+    assert "PASSENGER" in tags["Red-3"]
+    assert "PASSENGER" not in tags["Red-4"]
+
+
+def test_passenger_skipped_when_only_the_lvp_scored_low():
+    scores = [5000, 4800, 4600, 4400, 2000]
+    players = [_tag_player(i, score=score) for i, score in enumerate(scores)]
+    enemies = [_tag_player(i, team="Blue") for i in range(5)]
+
+    tags = _tags_for(players, enemies)
+
+    assert not any("PASSENGER" in player_tags for player_tags in tags.values())
+
+
+def test_passenger_goes_to_tied_low_scorer_who_missed_lvp():
+    scores = [5000, 4800, 4600, 2000, 2000]
+    players = [_tag_player(i, score=score) for i, score in enumerate(scores)]
+    enemies = [_tag_player(i, team="Blue") for i in range(5)]
+
+    tags = _tags_for(players, enemies)
+
+    lvp = [puuid for puuid, player_tags in tags.items() if "LVP" in player_tags]
+    passenger = [puuid for puuid, player_tags in tags.items() if "PASSENGER" in player_tags]
+    assert len(lvp) == 1 and len(passenger) == 1
+    assert {lvp[0], passenger[0]} == {"Red-3", "Red-4"}
 
 
 def test_schedule_renderer_returns_png_without_external_art():

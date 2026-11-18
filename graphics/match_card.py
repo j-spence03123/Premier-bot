@@ -10,19 +10,194 @@ from utils.formatting import parse_time
 from utils.match_summary import _clutch_wins, _deaths_by_round, _play_headline, _play_recap
 
 
+# Tags every eligible player keeps, even when a teammate earned the same one.
+SHARED_TAGS = {"ACE", "CLUTCH", "VICTIM"}
+OPERATOR_MIN_KILLS = 6
+ECO_LOADOUT_RATIO = 0.5
+ECO_MIN_ENEMY_LOADOUT = 2500
+PASSENGER_SCORE_RATIO = 0.8
+
+
+def _tag_key(tag):
+    return tag.split(" x", 1)[0]
+
+
 def _assign_unique_tags(tracked):
     """Give each tag to one eligible player, balancing tied awards across cards."""
     candidates = {}
+    assigned = [[] for _ in tracked]
     for index, item in enumerate(tracked):
         for tag in item["tags"]:
-            candidates.setdefault(tag.split(" x", 1)[0], []).append((index, tag))
-    assigned = [[] for _ in tracked]
+            if _tag_key(tag) in SHARED_TAGS:
+                assigned[index].append(tag)
+            else:
+                candidates.setdefault(_tag_key(tag), []).append((index, tag))
     # Settle uncontested awards before using the current award count for ties.
     for group in sorted(candidates.values(), key=len):
         index, tag = min(group, key=lambda candidate: (len(assigned[candidate[0]]), candidate[0]))
         assigned[index].append(tag)
     for item, tags in zip(tracked, assigned):
-        item["tags"] = tags
+        item["tags"] = [tag for tag in item["tags"] if tag in tags]
+
+
+def _round_number(round_data, index):
+    number = round_data.get("id")
+    return number if isinstance(number, int) else index
+
+
+def _plants(detail):
+    """Count bomb plants per player from the round list."""
+    plants = {}
+    for round_data in detail.get("rounds") or []:
+        planter = ((round_data.get("plant") or {}).get("player") or {}).get("puuid")
+        if planter:
+            plants[planter] = plants.get(planter, 0) + 1
+    return plants
+
+
+def _loadouts(detail):
+    """Map round number -> puuid -> loadout value for that round."""
+    loadouts = {}
+    for index, round_data in enumerate(detail.get("rounds") or []):
+        values = {}
+        for row in round_data.get("stats") or []:
+            puuid = (row.get("player") or {}).get("puuid")
+            value = (row.get("economy") or {}).get("loadout_value")
+            if puuid and isinstance(value, (int, float)):
+                values[puuid] = value
+        if values:
+            loadouts[_round_number(round_data, index)] = values
+    return loadouts
+
+
+def _kill_events(detail):
+    """Count Operator kills, eco kills and team kills per player."""
+    team_by_puuid = {p.get("puuid"): p.get("team_id") for p in detail.get("players") or [] if p.get("puuid")}
+    loadouts = _loadouts(detail)
+    operator, eco, team_kills = {}, {}, {}
+    for event in detail.get("kills") or []:
+        killer = (event.get("killer") or {}).get("puuid")
+        victim = (event.get("victim") or {}).get("puuid")
+        if not killer or not victim or killer == victim:
+            continue
+        killer_team = team_by_puuid.get(killer) or (event.get("killer") or {}).get("team")
+        victim_team = team_by_puuid.get(victim) or (event.get("victim") or {}).get("team")
+        if killer_team and killer_team == victim_team:
+            team_kills[killer] = team_kills.get(killer, 0) + 1
+            continue
+        weapon = event.get("weapon") or {}
+        if isinstance(weapon, dict) and str(weapon.get("name") or "").casefold() == "operator":
+            operator[killer] = operator.get(killer, 0) + 1
+        values = loadouts.get(event.get("round", 0) or 0, {})
+        mine, theirs = values.get(killer), values.get(victim)
+        if mine is not None and theirs is not None and theirs >= ECO_MIN_ENEMY_LOADOUT \
+                and mine <= theirs * ECO_LOADOUT_RATIO:
+            eco[killer] = eco.get(killer, 0) + 1
+    return operator, eco, team_kills
+
+
+def _friendly_fire(player):
+    return ((player.get("behavior") or {}).get("friendly_fire") or {}).get("outgoing") or 0
+
+
+def _build_tracked(detail, queued_players, all_teammates, round_count, kills_per_round,
+                   first_bloods, first_deaths, top_score, low_score):
+    """Work out each queued player's stat line and the tags they earned this match."""
+    deaths_by_round = _deaths_by_round(detail)
+    clutch_wins = _clutch_wins(detail, all_teammates)
+    plants = _plants(detail)
+    operator_kills, eco_kills, team_kills = _kill_events(detail)
+    teammate_ids = {p.get("puuid") for p in all_teammates}
+
+    def team_max(counts):
+        return max((counts.get(puuid, 0) for puuid in teammate_ids), default=0)
+
+    assists_by_id = {p.get("puuid"): (p.get("stats") or {}).get("assists", 0) for p in all_teammates}
+    damage_by_id = {
+        p.get("puuid"): round(((p.get("stats") or {}).get("damage") or {}).get("dealt", 0) / round_count)
+        for p in all_teammates
+    }
+    most_assists = max(assists_by_id.values(), default=0)
+    highest_adr = max(damage_by_id.values(), default=0)
+    most_first_bloods = team_max(first_bloods)
+    most_first_deaths = team_max(first_deaths)
+    most_plants = team_max(plants)
+    most_eco_kills = team_max(eco_kills)
+    most_team_kills = team_max(team_kills)
+    most_friendly_fire = max((_friendly_fire(p) for p in all_teammates), default=0)
+    operator_share = {}
+    for player in all_teammates:
+        puuid = player.get("puuid")
+        kills = (player.get("stats") or {}).get("kills", 0)
+        if operator_kills.get(puuid, 0) >= OPERATOR_MIN_KILLS and kills:
+            share = operator_kills[puuid] / kills
+            if share >= 0.4:
+                operator_share[puuid] = share
+    best_operator = max(operator_share.values(), default=0)
+    headshot_rates = {}
+    for player in all_teammates:
+        stats = player.get("stats") or {}
+        shots = sum(stats.get(part, 0) for part in ("headshots", "bodyshots", "legshots"))
+        if stats.get("kills", 0) >= 15 and shots:
+            headshot_rates[player.get("puuid")] = round(stats.get("headshots", 0) * 100 / shots)
+    highest_hs = max(headshot_rates.values(), default=0)
+    lowest_hs = min(headshot_rates.values(), default=100)
+    lowest_deaths = min(((p.get("stats") or {}).get("deaths", 0) for p in all_teammates), default=0)
+    tracked = []
+    for p in queued_players:
+        st = p.get("stats", {})
+        shots = st.get("headshots", 0) + st.get("bodyshots", 0) + st.get("legshots", 0)
+        hs = round(st.get("headshots", 0) * 100 / shots) if shots else 0
+        tags = []
+        puuid = p.get("puuid")
+        best_round = max((kills_per_round.get(r, {}).get(puuid, 0) for r in kills_per_round), default=0)
+        if best_round >= 5: tags.append("ACE")
+        elif best_round == 4: tags.append("QUAD")
+        if top_score is not None and st.get("score", 0) == top_score: tags.append("MVP")
+        if most_first_bloods >= 3 and first_bloods.get(puuid, 0) == most_first_bloods: tags.append("ENTRY")
+        if most_first_deaths >= 4 and first_deaths.get(puuid, 0) == most_first_deaths: tags.append("BAITED")
+        if best_operator and operator_share.get(puuid) == best_operator: tags.append("OPERATOR")
+        if most_plants >= 4 and plants.get(puuid, 0) == most_plants: tags.append("PLANTER")
+        if most_eco_kills >= 3 and eco_kills.get(puuid, 0) == most_eco_kills: tags.append("ECO FRAUD")
+        if most_team_kills and team_kills.get(puuid, 0) == most_team_kills:
+            tags.append("TEAM KILLER")
+        elif not most_team_kills and most_friendly_fire >= 100 and _friendly_fire(p) == most_friendly_fire:
+            tags.append("TEAM KILLER")
+        if highest_hs >= 30 and headshot_rates.get(puuid) == highest_hs: tags.append("DINK MACHINE")
+        if lowest_hs <= 15 and headshot_rates.get(puuid) == lowest_hs: tags.append("WALL HUGGER")
+        if most_assists >= 8 and assists_by_id.get(puuid, 0) == most_assists: tags.append("ASSIST KING")
+        if highest_adr >= 160 and damage_by_id.get(puuid, 0) == highest_adr: tags.append("DAMAGE DEALER")
+        if round_count >= 10 and ((st.get("deaths", 0) / round_count) <= 0.45) and st.get("deaths", 0) == lowest_deaths:
+            tags.append("SURVIVOR")
+        if clutch_wins.get(puuid, 0):
+            tags.append(f"CLUTCH x{clutch_wins[puuid]}")
+        death_rounds = sum(1 for events in deaths_by_round.values() if events.get(puuid, 0) > 0)
+        if round_count > 0 and death_rounds >= round_count: tags.append("VICTIM")
+        if low_score is not None and st.get("score", 0) == low_score: tags.append("LVP")
+        tracked.append({"p": p, "st": st, "hs": hs, "tags": tags,
+                        "fb": first_bloods.get(puuid, 0), "fd": first_deaths.get(puuid, 0),
+                        "adr": damage_by_id.get(puuid, 0)})
+    _assign_unique_tags(tracked)
+    _assign_passenger(tracked, all_teammates, low_score)
+    return tracked
+
+
+def _assign_passenger(tracked, all_teammates, low_score):
+    """Tag the next-lowest scorer after the LVP, when they also scored well below the team."""
+    scores = {p.get("puuid"): (p.get("stats") or {}).get("score", 0) for p in all_teammates}
+    if len(scores) < 3 or low_score is None:
+        return
+    lvp = next((item["p"].get("puuid") for item in tracked if "LVP" in item["tags"]), None)
+    if lvp is None:
+        lvp = next(puuid for puuid, score in scores.items() if score == low_score)
+    others = {puuid: score for puuid, score in scores.items() if puuid != lvp}
+    passenger_score = min(others.values())
+    average = sum(scores.values()) / len(scores)
+    if passenger_score >= average * PASSENGER_SCORE_RATIO:
+        return
+    eligible = [item for item in tracked if others.get(item["p"].get("puuid")) == passenger_score]
+    if eligible:
+        min(eligible, key=lambda item: len(item["tags"]))["tags"].append("PASSENGER")
 
 
 def _recap_mentions(text, players, discord_names):
@@ -93,53 +268,8 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     top_score = max(scores) if scores else None
     low_score = min(scores) if scores else None
     round_count = max(our_score + their_score, 1)
-    deaths_by_round = _deaths_by_round(detail)
-    clutch_wins = _clutch_wins(detail, all_teammates)
-    assists_by_id = {p.get("puuid"): (p.get("stats") or {}).get("assists", 0) for p in all_teammates}
-    damage_by_id = {
-        p.get("puuid"): round(((p.get("stats") or {}).get("damage") or {}).get("dealt", 0) / round_count)
-        for p in all_teammates
-    }
-    most_assists = max(assists_by_id.values(), default=0)
-    highest_adr = max(damage_by_id.values(), default=0)
-    most_first_bloods = max((first_bloods.get(p.get("puuid"), 0) for p in all_teammates), default=0)
-    headshot_rates = {}
-    for player in all_teammates:
-        stats = player.get("stats") or {}
-        shots = sum(stats.get(part, 0) for part in ("headshots", "bodyshots", "legshots"))
-        if stats.get("kills", 0) >= 15 and shots:
-            headshot_rates[player.get("puuid")] = round(stats.get("headshots", 0) * 100 / shots)
-    highest_hs = max(headshot_rates.values(), default=0)
-    lowest_deaths = min(((p.get("stats") or {}).get("deaths", 0) for p in all_teammates), default=0)
-    tracked = []
-    for p in queued_players:
-        st = p.get("stats", {})
-        shots = st.get("headshots", 0) + st.get("bodyshots", 0) + st.get("legshots", 0)
-        hs = round(st.get("headshots", 0) * 100 / shots) if shots else 0
-        tags = []
-        puuid = p.get("puuid")
-        best_round = max((kills_per_round.get(r, {}).get(puuid, 0) for r in kills_per_round), default=0)
-        if best_round >= 5: tags.append("ACE")
-        elif best_round == 4: tags.append("QUAD")
-        if top_score is not None and st.get("score", 0) == top_score: tags.append("MVP")
-        if most_first_bloods >= 3 and first_bloods.get(puuid, 0) == most_first_bloods: tags.append("ENTRY")
-        if highest_hs >= 30 and headshot_rates.get(puuid) == highest_hs: tags.append("DINK MACHINE")
-        if most_assists >= 8 and assists_by_id.get(puuid, 0) == most_assists: tags.append("ASSIST KING")
-        if highest_adr >= 160 and damage_by_id.get(puuid, 0) == highest_adr: tags.append("DAMAGE DEALER")
-        if round_count >= 10 and ((st.get("deaths", 0) / round_count) <= 0.45) and st.get("deaths", 0) == lowest_deaths:
-            tags.append("SURVIVOR")
-        clutch_count = clutch_wins.get(puuid, 0)
-        max_clutches = max(clutch_wins.values(), default=0)
-        if max_clutches > 0 and clutch_count == max_clutches:
-            tags.append(f"CLUTCH x{clutch_count}")
-        death_rounds = sum(1 for events in deaths_by_round.values() if events.get(puuid, 0) > 0)
-        if round_count > 0 and death_rounds >= round_count: tags.append("VICTIM")
-        if low_score is not None and st.get("score", 0) == low_score: tags.append("LVP")
-        tracked.append({"p": p, "st": st, "hs": hs, "tags": tags,
-                        "fb": first_bloods.get(puuid, 0), "fd": first_deaths.get(puuid, 0),
-                        "adr": damage_by_id.get(puuid, 0)})
-
-    _assign_unique_tags(tracked)
+    tracked = _build_tracked(detail, queued_players, all_teammates, round_count, kills_per_round,
+                             first_bloods, first_deaths, top_score, low_score)
     width, hero_h, gap = 1200, 270, 18
     focus = summary_players if summary_players is not None else all_teammates
     registered_only = summary_players is not None
