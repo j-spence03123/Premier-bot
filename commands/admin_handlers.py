@@ -4,7 +4,7 @@ from __future__ import annotations
 HELP_SECTIONS = [
     ("Premier", ["schedule", "results", "mapresults", "scout", "agent", "lineup", "clearagent", "playbook"]),
     ("Players", ["register", "registersmurf", "unregister", "registeredusers", "accounts", "rank", "player", "recent", "play"]),
-    ("Server managers", ["registeruser", "assignagent", "createplaybook", "importlineup", "importplaybook", "setschedule", "matchfeed", "matchfeed_tone", "testreminder", "testplaycard", "testrankcard", "clearcache"]),
+    ("Server managers", ["registeruser", "assignagent", "createplaybook", "importlineup", "importplaybook", "setschedule", "matchfeed", "matchfeed_tone", "squadlore", "testreminder", "testplaycard", "testrankcard", "clearcache"]),
     ("Troubleshooting", ["findteam", "debug"]),
 ]
 
@@ -69,8 +69,11 @@ async def help_cmd(interaction, *, HELP_SECTIONS, render_help_card, tree):
             cmd = tree.get_command(n)
             if not cmd:
                 continue
-            params = ' '.join((f'<{p.display_name}>' if p.required else f'[{p.display_name}]' for p in cmd.parameters))
-            lines.append((f"/{n}{(' ' + params if params else '')}", cmd.description))
+            commands = cmd.commands if isinstance(cmd, discord.app_commands.Group) else (cmd,)
+            for command in commands:
+                params = ' '.join(f'<{p.display_name}>' if p.required else f'[{p.display_name}]'
+                                  for p in command.parameters)
+                lines.append((f"/{command.qualified_name}{(' ' + params if params else '')}", command.description))
         if lines:
             content.append((title, lines))
     loop = asyncio.get_running_loop()

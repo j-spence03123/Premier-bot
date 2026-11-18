@@ -5,9 +5,13 @@ import ast
 import importlib
 import inspect
 from dataclasses import FrozenInstanceError
+from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 from commands import install_command_cogs
+from commands.admin_handlers import HELP_SECTIONS, help_cmd
 
 
 @pytest.mark.asyncio
@@ -20,7 +24,7 @@ async def test_command_cogs_preserve_all_slash_command_metadata(monkeypatch):
     def metadata(tree):
         return {command.name: (command.description,
                 [(p.name, p.required, p.type, p.autocomplete) for p in command.parameters])
-                for command in tree.get_commands()}
+                for command in tree.get_commands() if isinstance(command, discord.app_commands.Command)}
 
     await install_command_cogs(temporary, bot.make_command_context())
     commands_by_name = metadata(temporary.tree)
@@ -30,6 +34,16 @@ async def test_command_cogs_preserve_all_slash_command_metadata(monkeypatch):
     agent_params = commands_by_name["agent"][1]
     assert [(p[0], p[1], p[3]) for p in agent_params] == [("agent_name", True, True), ("map_name", False, True)]
     assert commands_by_name["recent"][1][0][0] == "player"
+    lore = temporary.tree.get_command("squadlore")
+    assert lore.default_permissions.administrator
+    assert {command.name for command in lore.commands} == {"set", "list", "remove"}
+    interaction = SimpleNamespace(response=SimpleNamespace(defer=AsyncMock()),
+                                  followup=SimpleNamespace(send=AsyncMock()))
+    render = Mock(return_value=BytesIO(b"help"))
+    await help_cmd(interaction, HELP_SECTIONS=HELP_SECTIONS, render_help_card=render, tree=temporary.tree)
+    managers = dict(render.call_args.args[0])["Server managers"]
+    assert any(label.startswith("/squadlore set ") for label, _ in managers)
+    interaction.followup.send.await_args.kwargs["file"].close()
     await temporary.close()
 
 

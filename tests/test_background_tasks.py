@@ -49,8 +49,10 @@ async def test_matchfeed_posts_new_match_before_checking_current_ranks(monkeypat
     monkeypatch.setattr(background_tasks.asyncio, "sleep", AsyncMock())
     order = []
     player = {"puuid": "one", "name": "Friend", "tag": "EUW", "team_id": "Red"}
-    detail = {"players": [player], "teams": [{"team_id": "Red", "won": True}]}
-    feeds = {"1": {"channel_id": 2, "started_at": "2026-11-01T00:00:00Z"}}
+    detail = {"players": [player], "teams": [{"team_id": "Red", "won": True, "rounds": {"won": 13, "lost": 7}}]}
+    feeds = {"1": {"channel_id": 2, "started_at": "2026-11-01T00:00:00Z",
+                   "squad_lore": {"the closer": {"label": "The Closer", "kind": "nickname", "trigger": "win",
+                                                  "member_id": "1"}}}}
     main = {"name": "Friend", "tag": "EUW"}
     if smurf:
         main = {"name": "Main", "tag": "EUW", "smurfs": [main]}
@@ -74,7 +76,7 @@ async def test_matchfeed_posts_new_match_before_checking_current_ranks(monkeypat
     client = Mock(wait_until_ready=AsyncMock(), is_closed=Mock(side_effect=[False, True]),
                   get_guild=Mock(return_value=guild),
                   get_channel=Mock(return_value=SimpleNamespace(send=send)))
-    match_image = AsyncMock(return_value=SimpleNamespace(fp=BytesIO(b"image")))
+    match_image = AsyncMock(return_value=SimpleNamespace(fp=BytesIO(b"image"), squad_callback_used=True))
     await background_tasks.matchfeed_loop(
         client=client, load_matchfeeds=lambda: feeds,
         load_accounts=lambda: {"1": main},
@@ -86,3 +88,5 @@ async def test_matchfeed_posts_new_match_before_checking_current_ranks(monkeypat
     account_count = 2 if smurf else 1
     assert order == ["history"] * account_count + ["post"] + ["rank"] * account_count
     assert match_image.await_args.kwargs["summary_players"][0]["is_smurf"] is smurf
+    assert match_image.await_args.kwargs["squad_context"]["callback"]["player"] == "Friend"
+    assert feeds["1"]["match_counts"]["squad_memory"]["used"] == {"the closer": 1}

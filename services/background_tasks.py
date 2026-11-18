@@ -4,17 +4,20 @@ import asyncio
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import io
+import json
 from urllib.parse import quote
 from zoneinfo import ZoneInfoNotFoundError
 
 import discord
 
 from services.account_registry import iter_linked_accounts
+from services.ai_recap import recap_facts
 from services.json_store import JsonStoreError
 from services.match_history import cached_match_detail
 from services.matchfeed import format_match_notification, group_registered_players, next_matchfeed_counts
 from services.matchfeed_context import matchfeed_recap_context
 from services.session_recap import post_session_recaps, session_match
+from services.squad_lore import prepare_squad_context, remember_squad_callback
 from utils.recap_tones import normalize_tone
 
 
@@ -288,19 +291,19 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
 
                         guild_groups = []
                         for team_id, group in shared_teams:
-                            mentions, member_account_keys, discord_names = [], set(), {}
+                            mentions, member_ids, discord_names = [], {}, {}
                             for riot_key in group["account_keys"]:
                                 for user_id in sorted(linked[riot_key]["user_ids"]):
                                     member = await guild_member(guild, user_id)
                                     if member:
-                                        member_account_keys.add(riot_key)
+                                        member_ids.setdefault(riot_key, user_id)
                                         mentions.append(user_id)
                                         display_name = getattr(member, "display_name", None)
                                         if display_name:
                                             discord_names.setdefault(riot_key, display_name)
-                            if member_account_keys:
+                            if member_ids:
                                 guild_groups.append((team_id, group, list(dict.fromkeys(mentions)),
-                                                     member_account_keys, discord_names))
+                                                     member_ids, discord_names))
                         if not guild_groups:
                             feed["seen"] = (list(feed.get("seen", [])) + [str(match_id)])[-1000:]
                             save_matchfeed_progress(feeds, guild_key)
@@ -309,26 +312,30 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                             len(item[1]["account_keys"]),
                             bool(team_records.get(item[0], {}).get("won")),
                         ), reverse=True)
-                        team_id, group, mentions, member_account_keys, discord_names = guild_groups[0]
+                        team_id, group, mentions, member_ids, discord_names = guild_groups[0]
                         team_record = team_records.get(team_id, {})
                         rounds = team_record.get("rounds") or {}
                         score = f"{rounds.get('won', 0)}-{rounds.get('lost', 0)}"
                         result_word = "won" if team_record.get("won") else "lost"
                         all_team_players = [p for p in detail.get("players", []) if str(p.get("team_id")) == team_id]
                         registered_players = []
+                        squad_members = {}
                         for player in group["players"]:
                             key = f"{player.get('name', '')}#{player.get('tag', '')}".casefold()
-                            if key in member_account_keys:
+                            if key in member_ids:
                                 registered_players.append({**player, "is_smurf": linked[key]["is_smurf"]})
+                                squad_members[str(member_ids[key])] = player["name"]
                         notify_targets.append((guild_key, feed, channel, mentions, team_id,
-                                               registered_players, all_team_players, result_word, score, discord_names))
+                                               registered_players, all_team_players, result_word, score, discord_names,
+                                               squad_members))
 
                     if notify_targets:
                         started = candidate["started"]
                         duration_ms = (detail.get("metadata") or {}).get("game_length_in_ms") or 0
                         finished = started + timedelta(milliseconds=duration_ms)
                         cards_by_roster = {}
-                        for guild_key, feed, channel, mentions, team_id, registered_players, all_team_players, result_word, score, discord_names in notify_targets:
+                        for (guild_key, feed, channel, mentions, team_id, registered_players, all_team_players,
+                             result_word, score, discord_names, squad_members) in notify_targets:
                             try:
                                 tone = normalize_tone(feed.get("tone"))
                                 for player in registered_players:
@@ -350,29 +357,40 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                                 recap_context = matchfeed_recap_context(
                                     registered_players, match_id, started, finished, histories, rank_histories,
                                 )
+                                facts = recap_facts(detail, registered_players, registered_players[0],
+                                                    registered_only=True)
+                                squad_memory, squad_context, callback_key = prepare_squad_context(
+                                    feed, squad_members, match_id, started, facts,
+                                )
                                 counts, footer = next_matchfeed_counts(
                                     feed, registered_players, match_id, started, finished,
-                                    recap_match=session_match(detail, registered_players, match_id, started, finished, recap_context, rank_histories),
+                                    recap_match=session_match(detail, registered_players, match_id, started, finished,
+                                                              recap_context, rank_histories, facts=facts),
                                 )
                                 roster_key = (team_id, tuple(p.get("puuid") for p in registered_players),
-                                              tone, footer, tuple(sorted(discord_names.items())))
+                                              tone, footer, tuple(sorted(discord_names.items())),
+                                              json.dumps(squad_context, sort_keys=True))
                                 if roster_key not in cards_by_roster:
                                     card = await play_match_image(detail, registered_players, all_team_players,
                                                                   registered_players[0], summary_players=registered_players,
                                                                   tone=tone, footer=footer, recap_context=recap_context,
-                                                                  discord_names=discord_names)
-                                    cards_by_roster[roster_key] = card.fp.getvalue()
+                                                                  discord_names=discord_names, squad_context=squad_context)
+                                    cards_by_roster[roster_key] = card.fp.getvalue(), getattr(card, "squad_callback_used", False)
+                                image, callback_used = cards_by_roster[roster_key]
                                 await channel.send(
                                     content=format_match_notification(
                                         mentions, result_word, score, map_name
                                     ),
-                                    file=discord.File(io.BytesIO(cards_by_roster[roster_key]), filename="match.png"),
+                                    file=discord.File(io.BytesIO(image), filename="match.png"),
                                     allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
                                 )
                             except discord.HTTPException as exc:
                                 print(f"Could not post match feed {match_id} in guild {guild_key}: {exc}")
                                 complete_poll = False
                                 continue
+                            if callback_key and callback_used:
+                                remember_squad_callback(squad_memory, callback_key)
+                            counts["squad_memory"] = squad_memory
                             feed["match_counts"] = counts
                             feed["seen"] = (list(feed.get("seen", [])) + [str(match_id)])[-1000:]
                             save_matchfeed_progress(feeds, guild_key)

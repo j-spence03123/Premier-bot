@@ -7,12 +7,17 @@ from utils.recap_tones import TONE_LABELS
 
 from commands import matchfeed_commands
 from commands import premier_handlers
+from commands import squad_lore
 from commands.scoreboard_view import ScoreboardView
 from commands.recent import recent_command
 from services.account_registry import AccountSlot
+from services.squad_lore import TRIGGERS
 from utils.formatting import parse_time
 
 class MatchesCog(commands.Cog):
+    lore = app_commands.Group(name="squadlore", description="Manage the squad's match recap callbacks",
+                              default_permissions=discord.Permissions(administrator=True), guild_only=True)
+
     def __init__(self, runtime: CommandContext):
         self.runtime = runtime
 
@@ -44,6 +49,30 @@ class MatchesCog(commands.Cog):
     @app_commands.choices(tone=[app_commands.Choice(name=label, value=value) for value, label in TONE_LABELS.items()])
     async def matchfeed_tone_cmd(self, interaction: discord.Interaction, tone: app_commands.Choice[str]):
         return await matchfeed_commands.matchfeed_tone_cmd(interaction, tone, load_matchfeeds=self.runtime.load_matchfeeds, save_matchfeeds=self.runtime.save_matchfeeds)
+
+    @lore.command(name="set", description="Save or update a nickname or inside joke")
+    @app_commands.describe(label="The exact nickname or phrase to use", trigger="What has to happen in the match",
+                           player="Optional player this callback belongs to", map_name="Optional map filter",
+                           nickname="Mark this as the selected player's nickname")
+    @app_commands.choices(trigger=[app_commands.Choice(name=label, value=key) for key, label in TRIGGERS.items()])
+    async def set_lore(self, interaction: discord.Interaction, label: str, trigger: app_commands.Choice[str],
+                       player: discord.Member = None, map_name: str = "", nickname: bool = False):
+        return await squad_lore.set_entry(interaction, label, trigger.value, player, map_name, nickname,
+                                         load_matchfeeds=self.runtime.load_matchfeeds,
+                                         save_matchfeeds=self.runtime.save_matchfeeds)
+
+    @set_lore.autocomplete("map_name")
+    async def lore_map_autocomplete(self, interaction: discord.Interaction, current: str):
+        return await self.runtime.map_autocomplete(interaction, current)
+
+    @lore.command(name="list", description="Show this server's saved callbacks and when they apply")
+    async def list_lore(self, interaction: discord.Interaction):
+        return await squad_lore.list_entries(interaction, load_matchfeeds=self.runtime.load_matchfeeds)
+
+    @lore.command(name="remove", description="Remove a nickname or inside joke by its label")
+    async def remove_lore(self, interaction: discord.Interaction, label: str):
+        return await squad_lore.remove_entry(interaction, label, load_matchfeeds=self.runtime.load_matchfeeds,
+                                            save_matchfeeds=self.runtime.save_matchfeeds)
 
     @app_commands.command(name='recent', description="Show a player's most recent competitive match scoreboard")
     @app_commands.describe(player='Mention a member with a linked account (defaults to you)', account='Linked account to use')

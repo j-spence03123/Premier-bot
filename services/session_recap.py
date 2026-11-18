@@ -13,8 +13,9 @@ from utils.formatting import parse_time
 from urllib.parse import quote
 
 
-def session_match(detail, players, match_id, started, finished, context, rank_histories=None):
-    facts = recap_facts(detail, players, players[0], registered_only=True)
+def session_match(detail, players, match_id, started, finished, context, rank_histories=None, *, facts=None):
+    if facts is None:
+        facts = recap_facts(detail, players, players[0], registered_only=True)
     rounds = facts["rounds"] or {}
     won, lost = rounds.get("won", 0), rounds.get("lost", 0)
     moments = []

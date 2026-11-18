@@ -31,3 +31,13 @@ python bot.py
 ```
 
 On Ubuntu, install `python3-venv` if needed. Install `fonts-dejavu-core` for image-rendering font support.
+
+## Squad lore
+
+With an automatic matchfeed configured, server admins can use `/squadlore set` to save a nickname or inside joke.
+Choose a match trigger and optionally restrict it to a map or linked Discord member.
+Use `/squadlore list` to review entries and `/squadlore remove` to delete one.
+AI recaps can use one matching callback when it fits the server's tone. A posted callback is followed by at least
+three reports without a saved callback, and the same entry needs at least six reports in between.
+The bot also tracks recorded games together and map streaks for each lineup of linked members from the first match
+posted after the update.

@@ -55,6 +55,7 @@ async def matchfeed_cmd(interaction: discord.Interaction, channel: discord.TextC
             "seen": [],
             "tone": normalize_tone(existing.get("tone")),
             "match_counts": existing.get("match_counts", {}),
+            "squad_lore": existing.get("squad_lore", {}),
         }
     else:
         existing["channel_id"] = channel.id

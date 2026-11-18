@@ -333,3 +333,16 @@ def test_fallback_selects_one_callback_from_current_rank_streak_and_form_reversa
                                                "One went 25/10 in their previous game on Haven."]
     story = local_matchfeed_recap(detail, [player], player, recap_context=history)["recap"]
     assert story == "The team lost 7–13 on Bind. One ranked down to Gold 1 this match."
+
+
+@pytest.mark.asyncio
+async def test_ai_receives_squad_lore_as_optional_data():
+    text = '{"headline":"Haven recap","recap":"The match slipped away."}'
+    http = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {"content": text}}]}))
+    context = {"callback": {"label": "Clutch Allergy", "kind": "inside joke", "player": None,
+                            "match_evidence": "The team recorded a loss."}}
+    result = await generate_recap(http, "test-key", "test-model", {}, [], {}, squad_context=context)
+    assert result["recap"] == "The match slipped away."
+    messages = http.request[1]["json"]["messages"]
+    assert "Clutch Allergy" not in messages[0]["content"]
+    assert json.loads(messages[1]["content"])["optional_squad_context"] == context
