@@ -31,6 +31,8 @@ def _prior_results(history, match_id, started):
         except (AttributeError, TypeError, ValueError):
             continue
         if match["score"]:
+            match["match_id"] = mid
+            match["team"] = str(row["stats"].get("team", "")).casefold()
             prior[mid] = (when, match)
     return sorted(prior.values(), key=lambda item: item[0], reverse=True)
 
@@ -94,6 +96,8 @@ def matchfeed_recap_context(players, match_id, started, finished, histories, ran
         if prior:
             when, last = prior[0]
             context["previous_match"] = {
+                "match_id": last["match_id"],
+                "team": last["team"],
                 "date": when.astimezone(MATCHFEED_DAY_ZONE).date().isoformat(),
                 "map": last["map"],
                 "score": last["score"],
@@ -112,21 +116,51 @@ def matchfeed_recap_context(players, match_id, started, finished, histories, ran
     return facts
 
 
-def recap_context_text(context):
-    """Add a short factual continuation when the local recap is used."""
-    sentences = []
-    for player in context or []:
+def recap_callbacks(context, facts):
+    """Shortlist verified history with a connection to the current game."""
+    teammates = {player["name"]: player for player in facts["teammates"]}
+    players = [row for row in context or [] if row["player"] in teammates]
+    score = facts.get("rounds") or {}
+    won, lost = score.get("won"), score.get("lost")
+    outcome = None
+    if type(won) is int and type(lost) is int:
+        outcome = "win" if won > lost else "loss" if won < lost else "draw"
+    candidates = []
+    prior_games = (player.get("previous_match") or {} for player in players)
+    previous_sides = {(last.get("match_id"), last.get("team")) for last in prior_games}
+    shared = (len(teammates) > 1 and {p["player"] for p in players} == teammates.keys()
+              and len(previous_sides) == 1 and all(mid and side in ("red", "blue") for mid, side in previous_sides))
+    for player in players:
         name = player["player"]
-        changes = player.get("rank_changes", [])
+        changes = player.get("rank_changes") or []
         if changes:
             change = changes[-1]
-            sentences.append(f"{name} ranked {change['direction']} to {change['to_rank']} {change['when']}.")
-        record = player.get("yesterday")
-        if record:
-            result = f"{record['wins']}W–{record['losses']}L"
-            if record["draws"]:
-                result += f"–{record['draws']}D"
-            sentences.append(f"{name}'s available results from yesterday were {result}.")
-        if len(sentences) >= 2:
-            break
-    return " ".join(sentences[:2])
+            current = change["when"] == "this match"
+            if current or (change["direction"], outcome) in (("up", "loss"), ("down", "win")):
+                candidates.append((0 if current else 3,
+                                   f"{name} ranked {change['direction']} to {change['to_rank']} {change['when']}."))
+        streak = player.get("streak_entering_match")
+        if streak and outcome and (streak["outcome"] != outcome or streak["games"] >= 3):
+            results = "wins" if streak["outcome"] == "win" else "losses"
+            priority = 1 if streak["outcome"] != outcome else 3
+            candidates.append((priority, f"{name} came in on {streak['games']} straight {results}."))
+        yesterday = player.get("yesterday") or {}
+        if yesterday and outcome in ("win", "loss"):
+            same, opposite = ("wins", "losses") if outcome == "win" else ("losses", "wins")
+            if yesterday[same] == 0 and yesterday[opposite] >= 3 and not yesterday["draws"]:
+                candidates.append((4, f"{name}'s available games yesterday were all {opposite}."))
+        last = player.get("previous_match") or {}
+        kd = teammates[name].get("match_kd")
+        kda = last.get("kda")
+        if (kd is not None and kda and len(kda) == 3 and all(type(n) is int for n in kda[:2])
+                and last.get("map") and last["map"] != "?"):
+            kills, deaths, _ = kda
+            if (deaths >= 8 and kills >= 2 * deaths and kd <= 0.75
+                    or kills >= 4 and deaths >= 2 * kills and kd >= 1.75):
+                candidates.append((2, f"{name} went {kills}/{deaths} in their previous game on {last['map']}."))
+        if (outcome and last.get("outcome") != outcome and last.get("map") == facts.get("map")
+                and last.get("map") and last.get("score")):
+            subject = "This lineup" if shared else name
+            candidates.append((1 if shared else 2, f"{subject}'s previous game was a {last['score']} "
+                               f"{last['outcome']} on {last['map']}."))
+    return list(dict.fromkeys(sentence for _, sentence in sorted(candidates, key=lambda item: item[0])))[:3]

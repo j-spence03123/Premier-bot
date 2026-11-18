@@ -1,7 +1,9 @@
 import pytest
 import json
+from datetime import datetime, timedelta, timezone
 
 from services.ai_recap import generate_recap, recap_facts, generate_session_summary, local_matchfeed_recap
+from services.matchfeed_context import matchfeed_recap_context, recap_callbacks
 
 
 class FakeResponse:
@@ -164,17 +166,17 @@ def test_recap_uses_verified_weapons_and_ace():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("story, expected", [
-    ("Friend dropped a [[WEAPON]] 4K. The team lost Haven 5–13.", "Friend dropped a Sheriff 4K."),
+    ("Friend dropped a Sheriff 4K. The team lost Haven 5–13.", "Friend dropped a Sheriff 4K."),
     ("Friend dropped a 4K. The team lost Haven 5–13.", "Friend dropped a 4K."),
-    ("Friend dropped a [[WEAPON]] 4K. The [[WEAPON]] clocked out.", None),
-    ("Friend dropped a 4K. Then came the Vandal cleanup.", None),
+    ("Haven ended 5–13. Friend's Vandal 3K came a round after the Sheriff 4K.", "Haven ended"),
+    ("Friend dropped a Phantom 4K.", None),
 ])
-async def test_weapon_is_optional_and_limited_to_opening_highlight(story, expected):
+async def test_weapons_are_optional_and_tied_to_verified_multikills(story, expected):
     player = {"puuid": "p1", "name": "Friend", "team_id": "Red", "stats": {"kills": 9, "deaths": 15}}
     kills = [
         {"round": round_id, "time_in_round_in_ms": index * 1000, "killer": player,
          "weapon": {"name": weapon, "type": "Weapon"}}
-        for round_id, weapon, count in ((0, "Sheriff", 4), (1, "Vandal", 3))
+        for round_id, weapon, count in ((0, "Sheriff", 4), (1, "Vandal", 3), (2, "Phantom", 1))
         for index in range(1, count + 1)
     ]
     teams = [{"team_id": "Red", "rounds": {"won": 5, "lost": 13}}, {"team_id": "Blue"}]
@@ -190,7 +192,7 @@ async def test_weapon_is_optional_and_limited_to_opening_highlight(story, expect
     else:
         assert result is None
     payload = http.request[1]["json"]["messages"][1]["content"]
-    assert "Sheriff" not in payload and "Vandal" not in payload
+    assert "Sheriff" in payload and "Vandal" in payload and "Phantom" not in payload
     facts = json.loads(payload)
     assert facts["half_results"] == {"first_half": [5, 7], "second_half": [0, 6]}
     assert facts["teammates"][0]["match_kd"] == 0.6
@@ -199,12 +201,12 @@ async def test_weapon_is_optional_and_limited_to_opening_highlight(story, expect
     assert fallback["recap"].count("Sheriff") == 1 and "Vandal" not in fallback["recap"]
     assert "Sheriff" not in fallback["headline"]
     assert fallback["recap"].index("5–13") < fallback["recap"].index("3K")
-    assert "0–6 in the second half" in fallback["recap"]
+    assert "All 6 rounds after it went the other way" in fallback["recap"]
     assert "half_results" not in recap_facts({**detail, "rounds": rounds[:-1]}, [player], player)
 
 
 @pytest.mark.asyncio
-async def test_match_recap_marks_smurf_and_uses_fallback_if_ai_ignores_it():
+async def test_smurf_context_is_available_but_optional():
     player = {"puuid": "p1", "name": "Alt", "team_id": "Red",
               "is_smurf": True, "stats": {"kills": 5, "deaths": 16}}
     main = {"puuid": "p2", "name": "Main", "team_id": "Red",
@@ -215,14 +217,13 @@ async def test_match_recap_marks_smurf_and_uses_fallback_if_ai_ignores_it():
         "content": '{"headline":"Rough game","recap":"Alt lost on Haven."}'
     }}]}))
 
-    assert await generate_recap(http, "test-key", "test-model", detail, players, player) is None
+    assert await generate_recap(http, "test-key", "test-model", detail, players, player)
     facts = json.loads(http.request[1]["json"]["messages"][1]["content"])
     alt, normal = facts["teammates"]
     assert alt["is_smurf"] and alt["poor_smurf_performance"]
     assert "is_smurf" not in normal
     recap = local_matchfeed_recap(detail, players, player, tone="harsh")["recap"]
-    assert "Alt played on a registered smurf and went 5/16" in recap
-    assert "scoreboard missed the memo" in recap
+    assert recap.count("smurf") == 1
 
 
 @pytest.mark.asyncio
@@ -261,3 +262,74 @@ async def test_registered_only_rejects_ai_output_naming_another_player():
     session = FakeSession(FakeResponse(200, response))
 
     assert await generate_recap(session, "key", "model", detail, [registered], registered, registered_only=True) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("metric,accepted", [("115 ACS", True), ("ACS of 115", True), ("116 ACS", False),
+                                            ("115 ADR", False), ("90 damage", False)])
+async def test_only_offered_acs_reaches_the_card(metric, accepted):
+    player = {"name": "SageMain", "team_id": "Red", "stats": {"score": 2070, "kills": 7, "deaths": 17}}
+    detail = {"players": [player], "teams": [{"team_id": "Red", "rounds": {"won": 5, "lost": 13}}]}
+    text = json.dumps({"headline": "Sage had a long night", "recap": f"SageMain finished on {metric}."})
+    http = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {"content": text}}]}))
+    result = await generate_recap(http, "key", "model", detail, [player], player)
+    assert bool(result) == accepted
+    facts = json.loads(http.request[1]["json"]["messages"][1]["content"])
+    assert facts["teammates"] == [{"name": "SageMain", "agent": None, "acs": 115}]
+
+
+@pytest.mark.asyncio
+async def test_quiet_game_omits_routine_stats_and_unrelated_history():
+    player = {"name": "Friend", "team_id": "Red", "stats": {"score": 4600, "kills": 16, "deaths": 15, "assists": 6}}
+    detail = {"metadata": {"map": {"name": "Haven"}}, "teams": [{"team_id": "Red", "rounds": {"won": 13, "lost": 9}}]}
+    context = [{"player": "Friend", "yesterday": {"wins": 1, "losses": 1, "draws": 0},
+                "previous_match": {"map": "Bind", "score": "10-13", "outcome": "loss"}},
+               {"player": "Stranger", "streak_entering_match": {"outcome": "loss", "games": 4}}]
+    recap = {"headline": "Haven holds", "recap": "The squad took Haven 13–9."}
+    http = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(recap)}}]}))
+    assert await generate_recap(http, "key", "model", detail, [player], player, recap_context=context) == recap
+    facts = json.loads(http.request[1]["json"]["messages"][1]["content"])
+    assert facts["teammates"] == [{"name": "Friend", "agent": None}]
+    assert "optional_history" not in facts
+    assert local_matchfeed_recap(detail, [player], player, recap_context=context)["recap"] == "The team won 13–9 on Haven."
+
+
+@pytest.mark.parametrize("other_team,shared", [("red", True), ("blue", False)])
+def test_same_map_callback_requires_a_shared_side_in_the_previous_game(other_team, shared):
+    players = [{"name": "One", "tag": "EU"}, {"name": "Two", "tag": "EU"}]
+    start = datetime(2026, 11, 15, 12, tzinfo=timezone.utc)
+    meta = {"id": "previous", "started_at": (start - timedelta(hours=2)).isoformat(), "map": {"name": "Haven"}}
+    def history(team):
+        return [{"meta": meta, "stats": {"team": team}, "teams": {"red": 13, "blue": 6}}]
+    context = matchfeed_recap_context(players, "current", start, start, {"one#eu": history("red"),
+                                                                         "two#eu": history(other_team)}, {})
+    facts = {"teammates": players, "rounds": {"won": 5, "lost": 13}, "map": "Haven"}
+    subject = "This lineup" if shared else "One"
+    assert recap_callbacks(context, facts) == [f"{subject}'s previous game was a 13-6 win on Haven."]
+
+
+def test_clutch_and_thrifty_are_team_facts_even_when_round_one_has_no_kills():
+    player = {"name": "Friend", "puuid": "friend", "team_id": "Red"}
+    detail = {"players": [player], "teams": [{"team_id": "Red"}, {"team_id": "Blue"}],
+              "rounds": [{"id": 0, "winning_team": "Blue", "ceremony": "CeremonyClutch"},
+                         {"id": 1, "winning_team": "Red", "ceremony": "CeremonyClutch"},
+                         {"id": 2, "winning_team": "Red", "ceremony": "CeremonyThrifty"}],
+              "kills": [{"round": 1, "time_in_round_in_ms": 3000, "killer": player}]}
+    facts = recap_facts(detail, [player], player, registered_only=True)
+    assert facts["special_round_wins"] == [{"round": 2, "team_win_type": "clutch"},
+                                           {"round": 3, "team_win_type": "thrifty"}]
+    assert facts["round_highlights"][0]["round"] == 2
+
+
+def test_fallback_selects_one_callback_from_current_rank_streak_and_form_reversal():
+    player = {"name": "One", "team_id": "Red", "stats": {"kills": 8, "deaths": 16}}
+    detail = {"metadata": {"map": {"name": "Bind"}}, "teams": [{"team_id": "Red", "rounds": {"won": 7, "lost": 13}}]}
+    history = [{"player": "One", "streak_entering_match": {"games": 4, "outcome": "win"},
+                "previous_match": {"map": "Haven", "kda": [25, 10, 5]},
+                "rank_changes": [{"when": "this match", "direction": "down", "to_rank": "Gold 1"}]}]
+    facts = recap_facts(detail, [player], player)
+    assert recap_callbacks(history, facts) == ["One ranked down to Gold 1 this match.",
+                                               "One came in on 4 straight wins.",
+                                               "One went 25/10 in their previous game on Haven."]
+    story = local_matchfeed_recap(detail, [player], player, recap_context=history)["recap"]
+    assert story == "The team lost 7–13 on Bind. One ranked down to Gold 1 this match."
