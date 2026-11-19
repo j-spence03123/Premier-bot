@@ -52,6 +52,24 @@ def _rr_text(player):
     return label, GREEN if player["rr"] > 0 else CORAL if player["rr"] < 0 else MUTED
 
 
+def _draw_rank_movement(draw, measure, right, y, change, color):
+    """'Gold 3 -> Platinum 1' right-aligned at ``right``; the arrow is drawn so it never depends on font glyphs."""
+    font = match_font(21, True)
+    to_width = measure.textlength(change["to"], font=font)
+    from_width = measure.textlength(change["from"], font=font)
+    arrow_width, gap = 22, 12
+    to_left = right - to_width
+    arrow_right = to_left - gap
+    arrow_left = arrow_right - arrow_width
+    draw.text((to_left, y), change["to"], font=font, fill=color)
+    draw.text((arrow_left - gap - from_width, y), change["from"], font=font, fill=color)
+    middle = y + 13
+    draw.line((arrow_left, middle, arrow_right, middle), fill=color, width=3)
+    draw.line((arrow_right - 7, middle - 7, arrow_right, middle, arrow_right - 7, middle + 7), fill=color, width=3,
+              joint="curve")
+    return to_width + from_width + arrow_width + gap * 2
+
+
 def _side_panel_height(week):
     changes = max(len(week["rank_changes"]), 1)
     premier = week.get("premier")
@@ -167,11 +185,9 @@ def draw_weekly_recap(week):
         draw.text((PAD + 20, row_y), "No rank changes this week.", font=body, fill=MUTED)
     for change in week["rank_changes"]:
         color = GREEN if change["direction"] == "up" else CORAL
-        movement = f"{change['from']}  →  {change['to']}"
-        movement_width = measure.textlength(movement, font=match_font(21, True))
+        movement_width = _draw_rank_movement(draw, measure, rank_right - 20, row_y + 2, change, color)
         draw.text((PAD + 20, row_y), _fit(measure, change["player"], match_font(23),
                                           rank_right - PAD - 60 - movement_width), font=match_font(23), fill=WHITE)
-        draw.text((rank_right - 20, row_y + 2), movement, font=match_font(21, True), fill=color, anchor="ra")
         row_y += SIDE_ROW
     if premier:
         left = PAD + half + panel_gap
