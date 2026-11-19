@@ -10,10 +10,16 @@ from services.matchfeed import MATCHFEED_DAY_ZONE
 WIDTH, PAD = 1200, 40
 BACKGROUND = (17, 17, 22)
 PANEL, PANEL_EDGE = (28, 27, 32), (57, 55, 63)
-CORAL, GREEN = (240, 99, 106), (102, 207, 147)
-GOLD = (255, 205, 90)
+TILE = (38, 37, 43)
+CORAL, GREEN, GOLD, GOLD_EDGE = (240, 99, 106), (102, 207, 147), (255, 205, 90), (107, 90, 42)
 WHITE, MUTED, RULE = (243, 242, 246), (171, 170, 182), (64, 61, 70)
-ROW, SECTION_GAP, HEADING = 40, 30, 44
+
+HEADER_HEIGHT = 170
+RR_ROW = 44
+GAME_CARD_HEIGHT = 196
+SIDE_ROW = 40
+SUMMARY_LINE = 32
+GAP = 26
 
 
 def _fit(measure, text, font, width):
@@ -22,7 +28,22 @@ def _fit(measure, text, font, width):
     return text
 
 
-def _rr_label(player):
+def _plural(count, word):
+    return f"{count} {word}" + ("" if count == 1 else "s")
+
+
+def _result(game_or_match):
+    won = game_or_match.get("won")
+    return ("W", GREEN) if won is True else ("L", CORAL) if won is False else ("D", MUTED)
+
+
+def _section_title(draw, measure, y, title):
+    font = match_font(20, True)
+    draw.text((PAD, y), title, font=font, fill=CORAL)
+    draw.line((PAD + measure.textlength(title, font=font) + 16, y + 13, WIDTH - PAD, y + 13), fill=RULE)
+
+
+def _rr_text(player):
     if player["rr"] is None:
         return "RR unavailable", MUTED
     if not player["games"] and not player["rr"]:
@@ -31,8 +52,11 @@ def _rr_label(player):
     return label, GREEN if player["rr"] > 0 else CORAL if player["rr"] < 0 else MUTED
 
 
-def _result(won):
-    return ("W", GREEN) if won is True else ("L", CORAL) if won is False else ("D", MUTED)
+def _side_panel_height(week):
+    changes = max(len(week["rank_changes"]), 1)
+    premier = week.get("premier")
+    rows = max(changes, len(premier["matches"])) if premier else changes
+    return 64 + rows * SIDE_ROW + 10
 
 
 def draw_weekly_recap(week):
@@ -40,103 +64,145 @@ def draw_weekly_recap(week):
     body = match_font(23)
     small = match_font(19)
     summary_lines = wrap_image_text(measure, week.get("summary") or "", body, WIDTH - PAD * 2, 8)
-
     players = week["players"]
+    games = week["top_games"]
     premier = week.get("premier")
-    sections = [("RR THIS WEEK", max(len(players), 1) * ROW)]
-    sections.append(("TOP GAMES", max(len(week["top_games"]), 1) * 52))
-    sections.append(("RANK CHANGES", max(len(week["rank_changes"]), 1) * ROW))
-    if premier:
-        sections.append(("PREMIER", ROW + len(premier["matches"]) * ROW))
-    if summary_lines:
-        sections.append(("SUMMARY", len(summary_lines) * 32))
 
-    header_height = 190
-    height = header_height + 30 + sum(HEADING + size + SECTION_GAP for _, size in sections) + 50
+    rr_height = 44 + max(len(players), 1) * RR_ROW
+    games_height = 44 + (GAME_CARD_HEIGHT if games else RR_ROW)
+    side_height = _side_panel_height(week)
+    summary_height = (44 + len(summary_lines) * SUMMARY_LINE) if summary_lines else 0
+    height = (20 + HEADER_HEIGHT + GAP + rr_height + GAP + games_height + GAP + side_height
+              + (GAP + summary_height if summary_height else 0) + 60)
     image = Image.new("RGB", (WIDTH, height), BACKGROUND)
     draw = ImageDraw.Draw(image)
 
-    # Header
+    # Header with date range and two stat tiles.
     start = week["start"].astimezone(MATCHFEED_DAY_ZONE)
     end = week["end"].astimezone(MATCHFEED_DAY_ZONE)
-    draw.rounded_rectangle((20, 16, WIDTH - 20, header_height), radius=14, fill=PANEL, outline=PANEL_EDGE, width=1)
-    draw.text((PAD, 32), "WEEKLY RECAP", font=match_font(20, True), fill=CORAL)
-    draw.text((PAD, 64), f"{start:%d %b} – {end:%d %b}", font=match_font(52, True), fill=WHITE)
+    draw.rounded_rectangle((20, 20, WIDTH - 20, 20 + HEADER_HEIGHT), radius=14, fill=PANEL, outline=PANEL_EDGE)
+    draw.text((PAD, 40), "WEEKLY RECAP", font=match_font(20, True), fill=CORAL)
+    draw.text((PAD, 70), f"{start:%d %b} – {end:%d %b}", font=match_font(54, True), fill=WHITE)
+    draw.text((PAD, 142), f"{start:%a %H:%M} – {end:%a %H:%M} UK", font=body, fill=MUTED)
     squad = week["squad"]
-    if squad["games"]:
-        noun = "game" if squad["games"] == 1 else "games"
-        line = f"{squad['games']} competitive {noun} · {squad['wins']}W {squad['losses']}L as a squad"
-    else:
-        line = "No competitive games this week"
-    draw.text((PAD, 138), line, font=body, fill=MUTED)
+    tiles = (("GAMES", str(squad["games"])), ("RECORD", f"{squad['wins']}W {squad['losses']}L"))
+    tile_font, right = match_font(38, True), WIDTH - PAD
+    for label, value in reversed(tiles):
+        tile_width = max(150, round(measure.textlength(value, font=tile_font)) + 32)
+        box = (right - tile_width, 70, right, 166)
+        draw.rounded_rectangle(box, radius=10, fill=TILE, outline=PANEL_EDGE)
+        draw.text((box[0] + 16, box[1] + 14), label, font=match_font(15, True), fill=MUTED)
+        draw.text((box[0] + 16, box[1] + 38), value, font=tile_font, fill=WHITE)
+        right = box[0] - 12
 
-    y = header_height + 30
-    for title, _ in sections:
-        draw.text((PAD, y), title, font=match_font(20, True), fill=CORAL)
-        draw.line((PAD + measure.textlength(title, font=match_font(20, True)) + 16, y + 13, WIDTH - PAD, y + 13),
-                  fill=RULE)
-        y += HEADING
-        if title == "RR THIS WEEK":
-            if not players:
-                draw.text((PAD, y), "No registered players in this server.", font=body, fill=MUTED)
-                y += ROW
-            for player in players:
-                name = player["name"] + (" (smurf)" if player["smurf"] else "")
-                draw.text((PAD, y), _fit(measure, name, match_font(25), 430), font=match_font(25), fill=WHITE)
-                if player["games"]:
-                    noun = "game" if player["games"] == 1 else "games"
-                    record = f"{player['games']} {noun} · {player['wins']}W {player['losses']}L"
-                    draw.text((PAD + 450, y + 3), record, font=small, fill=MUTED)
-                if player["rank"]:
-                    draw.text((PAD + 720, y + 3), _fit(measure, player["rank"], small, 230), font=small, fill=MUTED)
-                label, color = _rr_label(player)
-                draw.text((WIDTH - PAD, y), label, font=match_font(24, True), fill=color, anchor="ra")
-                y += ROW
-        elif title == "TOP GAMES":
-            if not week["top_games"]:
-                draw.text((PAD, y), "No games to rank this week.", font=body, fill=MUTED)
-                y += 52
-            for index, game in enumerate(week["top_games"], 1):
-                draw.text((PAD, y), f"{index}.", font=match_font(25, True), fill=GOLD if index == 1 else WHITE)
-                headline = f"{game['player']} · {game['agent']} · {game['map']}"
-                draw.text((PAD + 40, y), _fit(measure, headline, match_font(25), 640), font=match_font(25), fill=WHITE)
-                stats = f"{game['k']}/{game['d']}/{game['a']} · {game['acs']} ACS · {game['hs']}% HS"
-                draw.text((PAD + 40, y + 30), stats, font=small, fill=MUTED)
-                letter, color = _result(game["won"])
-                draw.text((WIDTH - PAD, y), f"{letter} {game['score']}".strip(), font=match_font(24, True),
-                          fill=color, anchor="ra")
-                y += 52
-        elif title == "RANK CHANGES":
-            if not week["rank_changes"]:
-                draw.text((PAD, y), "No rank changes this week.", font=body, fill=MUTED)
-                y += ROW
-            for change in week["rank_changes"]:
-                up = change["direction"] == "up"
-                draw.text((PAD, y), _fit(measure, change["player"], match_font(25), 430), font=match_font(25),
-                          fill=WHITE)
-                draw.text((PAD + 450, y + 3), "Ranked up" if up else "Deranked", font=small,
-                          fill=GREEN if up else CORAL)
-                draw.text((WIDTH - PAD, y), f"{change['from']}  →  {change['to']}", font=match_font(24, True),
-                          fill=GREEN if up else CORAL, anchor="ra")
-                y += ROW
-        elif title == "PREMIER":
-            record = f"{premier['wins']}W {premier['losses']}L"
-            if premier["points"] is not None:
-                record += f" · {premier['points']:+d} points"
-            draw.text((PAD, y), record, font=match_font(25, True), fill=WHITE)
-            y += ROW
-            for match in premier["matches"]:
-                letter, color = _result(match["won"])
-                draw.text((PAD, y), letter, font=match_font(23, True), fill=color)
-                text = f"{match['map']} vs {match['opponent']}"
-                draw.text((PAD + 40, y), _fit(measure, text, body, 760), font=body, fill=WHITE)
-                draw.text((WIDTH - PAD, y), match["score"], font=body, fill=MUTED, anchor="ra")
-                y += ROW
-        elif title == "SUMMARY":
-            for line in summary_lines:
-                draw.text((PAD, y), line, font=body, fill=WHITE)
-                y += 32
-        y += SECTION_GAP
+    # RR list with a bar that grows right for gains and left for losses.
+    y = 20 + HEADER_HEIGHT + GAP
+    _section_title(draw, measure, y, "RR THIS WEEK")
+    y += 44
+    if not players:
+        draw.text((PAD, y), "No registered players in this server.", font=body, fill=MUTED)
+    biggest = max([abs(player["rr"]) for player in players if player["rr"]] or [1])
+    bar_left, bar_right = PAD + 440, WIDTH - PAD - 150
+    middle = (bar_left + bar_right) // 2
+    for player in players:
+        name = player["name"] + (" (smurf)" if player["smurf"] else "")
+        draw.text((PAD, y), _fit(measure, name, match_font(25), 220), font=match_font(25),
+                  fill=WHITE if player["games"] else MUTED)
+        record = (f"{_plural(player['games'], 'game')} · {player['wins']}W {player['losses']}L"
+                  if player["games"] else "No games")
+        draw.text((PAD + 230, y + 4), _fit(measure, record, small, 200), font=small, fill=MUTED)
+        bar_y = y + 12
+        draw.rounded_rectangle((bar_left, bar_y, bar_right, bar_y + 10), radius=5, fill=TILE)
+        if player["rr"]:
+            length = max(6, round((middle - bar_left) * min(abs(player["rr"]) / biggest, 1)))
+            if player["rr"] > 0:
+                draw.rounded_rectangle((middle, bar_y, middle + length, bar_y + 10), radius=5, fill=GREEN)
+            else:
+                draw.rounded_rectangle((middle - length, bar_y, middle, bar_y + 10), radius=5, fill=CORAL)
+        label, color = _rr_text(player)
+        draw.text((WIDTH - PAD, y), label, font=match_font(24, True), fill=color, anchor="ra")
+        y += RR_ROW
+
+    # Top games as three side-by-side cards.
+    y = 20 + HEADER_HEIGHT + GAP + rr_height + GAP
+    _section_title(draw, measure, y, "TOP GAMES")
+    y += 44
+    if not games:
+        draw.text((PAD, y), "No games to rank this week.", font=body, fill=MUTED)
+    card_gap = 14
+    card_width = (WIDTH - PAD * 2 - card_gap * 2) // 3
+    for index, game in enumerate(games):
+        left = PAD + index * (card_width + card_gap)
+        right = left + card_width
+        draw.rounded_rectangle((left, y, right, y + GAME_CARD_HEIGHT), radius=12, fill=PANEL,
+                               outline=GOLD_EDGE if index == 0 else PANEL_EDGE)
+        inner = left + 18
+        draw.text((inner, y + 14), f"{index + 1}.", font=match_font(30, True), fill=GOLD if index == 0 else WHITE)
+        letter, color = _result(game)
+        draw.text((right - 18, y + 20), f"{letter} {game['score']}".strip(), font=match_font(22, True),
+                  fill=color, anchor="ra")
+        draw.text((inner, y + 62), _fit(measure, f"{game['player']} · {game['agent']}", match_font(24),
+                                        card_width - 36), font=match_font(24), fill=WHITE)
+        played = game["started_at"].astimezone(MATCHFEED_DAY_ZONE)
+        draw.text((inner, y + 98), _fit(measure, f"{game['map']} · {played:%a %d %b}", small, card_width - 36),
+                  font=small, fill=MUTED)
+        draw.line((inner, y + 136, right - 18, y + 136), fill=RULE)
+        kda = f"{game['k']}/{game['d']}/{game['a']} · "
+        acs = f"{game['acs']} ACS"
+        draw.text((inner, y + 152), kda, font=small, fill=MUTED)
+        offset = measure.textlength(kda, font=small)
+        draw.text((inner + offset, y + 152), acs, font=match_font(19, True), fill=WHITE)
+        offset += measure.textlength(acs, font=match_font(19, True))
+        draw.text((inner + offset, y + 152), f" · {game['hs']}% HS", font=small, fill=MUTED)
+
+    # Rank changes and Premier side by side (rank changes fill the row without Premier).
+    y = 20 + HEADER_HEIGHT + GAP + rr_height + GAP + games_height + GAP
+    panel_gap = 14
+    half = (WIDTH - PAD * 2 - panel_gap) // 2
+    rank_right = PAD + half if premier else WIDTH - PAD
+    draw.rounded_rectangle((PAD, y, rank_right, y + side_height), radius=12, fill=PANEL, outline=PANEL_EDGE)
+    draw.text((PAD + 20, y + 18), "RANK CHANGES", font=match_font(20, True), fill=CORAL)
+    row_y = y + 64
+    if not week["rank_changes"]:
+        draw.text((PAD + 20, row_y), "No rank changes this week.", font=body, fill=MUTED)
+    for change in week["rank_changes"]:
+        color = GREEN if change["direction"] == "up" else CORAL
+        movement = f"{change['from']}  →  {change['to']}"
+        movement_width = measure.textlength(movement, font=match_font(21, True))
+        draw.text((PAD + 20, row_y), _fit(measure, change["player"], match_font(23),
+                                          rank_right - PAD - 60 - movement_width), font=match_font(23), fill=WHITE)
+        draw.text((rank_right - 20, row_y + 2), movement, font=match_font(21, True), fill=color, anchor="ra")
+        row_y += SIDE_ROW
+    if premier:
+        left = PAD + half + panel_gap
+        draw.rounded_rectangle((left, y, WIDTH - PAD, y + side_height), radius=12, fill=PANEL, outline=PANEL_EDGE)
+        draw.text((left + 20, y + 18), "PREMIER", font=match_font(20, True), fill=CORAL)
+        record = f"{premier['wins']}W {premier['losses']}L"
+        points = f" · {premier['points']:+d} points" if premier["points"] is not None else ""
+        bold = match_font(21, True)
+        points_color = GREEN if (premier["points"] or 0) >= 0 else CORAL
+        draw.text((WIDTH - PAD - 20, y + 18), points, font=bold, fill=points_color, anchor="ra")
+        draw.text((WIDTH - PAD - 20 - measure.textlength(points, font=bold), y + 18), record, font=bold,
+                  fill=WHITE, anchor="ra")
+        row_y = y + 64
+        for match in premier["matches"]:
+            letter, color = _result(match)
+            draw.text((left + 20, row_y), letter, font=match_font(22, True), fill=color)
+            score_width = measure.textlength(match["score"], font=match_font(22))
+            text = f"{match['map']} vs {match['opponent']}"
+            draw.text((left + 56, row_y), _fit(measure, text, match_font(22), half - 100 - score_width),
+                      font=match_font(22), fill=WHITE)
+            draw.text((WIDTH - PAD - 20, row_y), match["score"], font=match_font(22), fill=MUTED, anchor="ra")
+            row_y += SIDE_ROW
+
+    # Summary paragraph.
+    if summary_lines:
+        y += side_height + GAP
+        _section_title(draw, measure, y, "SUMMARY")
+        y += 44
+        for line in summary_lines:
+            draw.text((PAD, y), line, font=body, fill=WHITE)
+            y += SUMMARY_LINE
 
     footer = f"{start:%a %d %b %H:%M} – {end:%a %d %b %H:%M} UK"
     if any(player["partial"] for player in players):
