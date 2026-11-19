@@ -45,7 +45,7 @@ def draw_weekly_recap(week):
     premier = week.get("premier")
     sections = [("RR THIS WEEK", max(len(players), 1) * ROW)]
     sections.append(("TOP GAMES", max(len(week["top_games"]), 1) * 52))
-    sections.append(("RANK UPS", max(len(week["rank_ups"]), 1) * ROW))
+    sections.append(("RANK CHANGES", max(len(week["rank_changes"]), 1) * ROW))
     if premier:
         sections.append(("PREMIER", ROW + len(premier["matches"]) * ROW))
     if summary_lines:
@@ -106,14 +106,18 @@ def draw_weekly_recap(week):
                 draw.text((WIDTH - PAD, y), f"{letter} {game['score']}".strip(), font=match_font(24, True),
                           fill=color, anchor="ra")
                 y += 52
-        elif title == "RANK UPS":
-            if not week["rank_ups"]:
-                draw.text((PAD, y), "No rank ups this week.", font=body, fill=MUTED)
+        elif title == "RANK CHANGES":
+            if not week["rank_changes"]:
+                draw.text((PAD, y), "No rank changes this week.", font=body, fill=MUTED)
                 y += ROW
-            for up in week["rank_ups"]:
-                draw.text((PAD, y), _fit(measure, up["player"], match_font(25), 430), font=match_font(25), fill=WHITE)
-                draw.text((WIDTH - PAD, y), f"{up['from']}  →  {up['to']}", font=match_font(24, True), fill=GREEN,
-                          anchor="ra")
+            for change in week["rank_changes"]:
+                up = change["direction"] == "up"
+                draw.text((PAD, y), _fit(measure, change["player"], match_font(25), 430), font=match_font(25),
+                          fill=WHITE)
+                draw.text((PAD + 450, y + 3), "Ranked up" if up else "Deranked", font=small,
+                          fill=GREEN if up else CORAL)
+                draw.text((WIDTH - PAD, y), f"{change['from']}  →  {change['to']}", font=match_font(24, True),
+                          fill=GREEN if up else CORAL, anchor="ra")
                 y += ROW
         elif title == "PREMIER":
             record = f"{premier['wins']}W {premier['losses']}L"

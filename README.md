@@ -46,5 +46,5 @@ posted after the update.
 
 With an automatic matchfeed configured, the bot posts a weekly recap card in the matchfeed channel every Sunday at
 20:00 UK time, covering Sunday 20:00 to Sunday 20:00. It shows each registered player's RR gain or loss, the top three
-competitive games of the week, rank ups, the Premier team's results (left out when no Premier games were played) and a
+competitive games of the week, rank ups and deranks, the Premier team's results (left out when no Premier games were played) and a
 short summary (AI-written when `GROQ_API_KEY` is set). Administrators can preview the week so far with `/weeklyrecap`.

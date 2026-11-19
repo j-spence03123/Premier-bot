@@ -9,7 +9,7 @@ from PIL import Image
 from graphics.weekly_recap import draw_weekly_recap
 from services.weekly_recap import (RECAP_ZONE, build_week, completed_week, local_summary, premier_results,
                                    run_weekly_recap, top_games, week_end_at_or_before, window_games,
-                                   window_rank_ups, window_rr)
+                                   window_rank_changes, window_rr)
 
 START = datetime(2026, 11, 8, 20, tzinfo=RECAP_ZONE)
 END = datetime(2026, 11, 15, 20, tzinfo=RECAP_ZONE)
@@ -59,18 +59,30 @@ def test_rr_falls_back_to_saved_rating_then_marks_partial():
     assert window_rr(history, START, END, late, {"elo": 950}) == {"rr": 20, "partial": True}
 
 
-def test_rank_ups_inside_week_ignore_act_resets_and_combine_steps():
+def test_rank_changes_inside_week_ignore_act_resets_and_combine_steps():
     history = [
         mmr(START - timedelta(hours=2), 10, 11, "Silver 3", 890),
         mmr(START + timedelta(days=1), 20, 12, "Gold 1", 910),
         mmr(START + timedelta(days=2), 25, 13, "Gold 2", 1010),
         mmr(START + timedelta(days=3), 0, 15, "Platinum 1", 1200, season="new"),
     ]
-    assert window_rank_ups(history, START, END) == [
-        {"from_id": 11, "from": "Silver 3", "to_id": 13, "to": "Gold 2"}]
+    assert window_rank_changes(history, START, END) == [
+        {"from_id": 11, "from": "Silver 3", "to_id": 13, "to": "Gold 2", "direction": "up"}]
     baseline = {"tier_id": 12, "tier_name": "Gold 1", "at": START.isoformat()}
     current = {"tier_id": 13, "tier_name": "Gold 2"}
-    assert window_rank_ups([], START, END, baseline, current)[0]["to"] == "Gold 2"
+    assert window_rank_changes([], START, END, baseline, current)[0]["to"] == "Gold 2"
+
+
+def test_deranks_are_reported_and_round_trips_are_not():
+    down = [mmr(START - timedelta(hours=1), 5, 13, "Gold 2", 1005),
+            mmr(START + timedelta(days=1), -20, 12, "Gold 1", 985)]
+    assert window_rank_changes(down, START, END) == [
+        {"from_id": 13, "from": "Gold 2", "to_id": 12, "to": "Gold 1", "direction": "down"}]
+    round_trip = down + [mmr(START + timedelta(days=2), 25, 13, "Gold 2", 1010)]
+    assert window_rank_changes(round_trip, START, END) == []
+    baseline = {"tier_id": 13, "tier_name": "Gold 2", "at": START.isoformat()}
+    assert window_rank_changes([], START, END, baseline, {"tier_id": 12, "tier_name": "Gold 1"})[0][
+        "direction"] == "down"
 
 
 def test_games_and_top_three_are_limited_to_the_week():
@@ -99,8 +111,9 @@ def sample_week(premier=True):
                           stored("b", START + timedelta(days=2), score=4000, red=5, blue=13)], START, END)
     players = [
         {"name": "Kevin", "games": games, "rr": 35, "partial": False, "rank": "Gold 2",
-         "rank_ups": [{"from_id": 12, "from": "Gold 1", "to_id": 13, "to": "Gold 2"}]},
-        {"name": "Spam", "smurf": True, "games": games[:1], "rr": -12, "partial": True, "rank": "Silver 1"},
+         "rank_changes": [{"from_id": 12, "from": "Gold 1", "to_id": 13, "to": "Gold 2", "direction": "up"}]},
+        {"name": "Spam", "smurf": True, "games": games[:1], "rr": -12, "partial": True, "rank": "Silver 1",
+         "rank_changes": [{"from_id": 9, "from": "Silver 2", "to_id": 8, "to": "Silver 1", "direction": "down"}]},
         {"name": "Idle", "games": [], "rr": 0, "partial": False, "rank": None},
     ]
     result = premier_results([({"started_at": (START + timedelta(days=4)).isoformat()},
@@ -113,9 +126,10 @@ def test_build_week_and_local_summary():
     week = sample_week()
     assert [player["name"] for player in week["players"]] == ["Kevin", "Idle", "Spam"]
     assert week["squad"] == {"games": 2, "wins": 1, "losses": 1}
-    assert week["rank_ups"][0]["player"] == "Kevin"
+    assert [(c["player"], c["direction"]) for c in week["rank_changes"]] == [("Kevin", "up"), ("Spam", "down")]
     text = local_summary(week)
     assert "Kevin climbed the most with +35 RR" in text and "Premier went 0W 1L" in text
+    assert "Rank ups for Kevin." in text and "Deranks for Spam." in text
     assert "Quiet week" in local_summary(build_week([], START, END))
 
 
