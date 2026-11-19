@@ -18,7 +18,9 @@ from services.matchfeed import format_match_notification, group_registered_playe
 from services.matchfeed_context import matchfeed_recap_context
 from services.session_recap import post_session_recaps, session_match
 from services.squad_lore import prepare_squad_context, remember_squad_callback
+from utils.rank_context import count_rank_entry, match_context, rank_card_context, rank_group
 from utils.recap_tones import normalize_tone
+from utils.stored_matches import parse_stored
 
 
 MATCHFEED_POLL_SECONDS = 120
@@ -419,7 +421,29 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                         tier_id = int(tier.get("id") or 0)
                         tier_name = tier.get("name") or "Unrated"
                         previous = rank_states.get(riot_key)
+                        act_record = (previous or {}).get("act")
                         if previous is not None and int(previous.get("tier_id") or 0) != tier_id:
+                            from_id = int(previous.get("tier_id") or 0)
+                            direction = "up" if tier_id > from_id else "down"
+                            context_line = None
+                            try:
+                                match_text = match_context(histories.get(riot_key), direction,
+                                                           datetime.now(timezone.utc), parse_stored, parse_time)
+                                count = None
+                                if (direction == "up" and rank_group(tier_id) is not None
+                                        and rank_group(tier_id) != rank_group(from_id)):
+                                    history = rank_histories.get(riot_key)
+                                    if not history:
+                                        await asyncio.sleep(2.3)
+                                        history = await cached_api(
+                                            f"/valorant/v1/mmr-history/{region}/{quote(account['name'])}/{quote(account['tag'])}",
+                                            MATCHFEED_CACHE_SECONDS,
+                                        )
+                                        history = history if isinstance(history, list) else []
+                                    count, act_record = count_rank_entry(act_record, history, tier_id)
+                                context_line = rank_card_context(match_text, count, tier_name)
+                            except Exception as exc:
+                                print(f"Rank change context unavailable for {account['name']}#{account['tag']}: {exc}")
                             rank_changes.append({
                                 "riot_key": riot_key,
                                 "user_ids": sorted(entry["user_ids"]),
@@ -432,10 +456,13 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                                 "from_rr": previous.get("rr"),
                                 "to_rr": current.get("rr"),
                                 "rr_change": current.get("last_change"),
+                                "context": context_line,
                             })
                         updated_rank = {
                             "tier_id": tier_id, "tier_name": tier_name, "rr": current.get("rr")
                         }
+                        if act_record:
+                            updated_rank["act"] = act_record
                         if updated_rank != previous:
                             rank_state_updates[riot_key] = updated_rank
                     except Exception as exc:
@@ -447,6 +474,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                             event["name"], event["from_id"], event["from_name"],
                             event["to_id"], event["to_name"], event["direction"],
                             event["from_rr"], event["to_rr"], event["rr_change"],
+                            context=event.get("context"),
                         )
                         image_bytes = card.fp.getvalue()
                     except Exception as exc:

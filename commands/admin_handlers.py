@@ -54,7 +54,8 @@ async def test_rank_card(interaction, scenario, *, rank_change_image):
     previews = {'subrank': (15, 'Platinum 1', 16, 'Platinum 2', 'up'), 'promotion': (17, 'Platinum 3', 18, 'Diamond 1', 'up'), 'derank': (18, 'Diamond 1', 17, 'Platinum 3', 'down')}
     from_id, from_name, to_id, to_name, direction = previews[scenario.value]
     from_rr, to_rr, rr_change = (0, 80, -20) if direction == 'down' else (90, 15, 25)
-    card = await rank_change_image(interaction.user.display_name, from_id, from_name, to_id, to_name, direction, from_rr, to_rr, rr_change)
+    context = {'subrank': 'After a 13–8 win on Bind', 'promotion': 'After a 13–8 win on Bind  ·  First time in Diamond this act', 'derank': 'After an 8–13 loss on Lotus'}[scenario.value]
+    card = await rank_change_image(interaction.user.display_name, from_id, from_name, to_id, to_name, direction, from_rr, to_rr, rr_change, context=context)
     direction_text = 'ranked up' if direction == 'up' else 'deranked'
     await interaction.followup.send(content=f'{interaction.user.mention} {direction_text}!', file=card, ephemeral=True)
 

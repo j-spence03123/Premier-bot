@@ -90,3 +90,44 @@ async def test_matchfeed_posts_new_match_before_checking_current_ranks(monkeypat
     assert match_image.await_args.kwargs["summary_players"][0]["is_smurf"] is smurf
     assert match_image.await_args.kwargs["squad_context"]["callback"]["player"] == "Friend"
     assert feeds["1"]["match_counts"]["squad_memory"]["used"] == {"the closer": 1}
+
+
+@pytest.mark.asyncio
+async def test_rank_up_card_gets_match_and_act_context(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setattr(background_tasks.asyncio, "sleep", AsyncMock())
+    now = datetime.now(timezone.utc)
+    stamp = lambda hours: int((now - timedelta(hours=hours)).timestamp())  # noqa: E731
+    stored = [{"meta": {"id": "match", "started_at": (now - timedelta(minutes=50)).isoformat(),
+                        "map": {"name": "Bind"}},
+               "stats": {"team": "Red", "kills": 20, "deaths": 10, "score": 5000}, "teams": {"red": 13, "blue": 8}}]
+    history = [{"date_raw": stamp(90), "currenttier": 17, "season_id": "old", "match_id": "a"},
+               {"date_raw": stamp(40), "currenttier": 15, "season_id": "new", "match_id": "b"},
+               {"date_raw": stamp(20), "currenttier": 14, "season_id": "new", "match_id": "c"}]
+
+    async def api(path, ttl, **params):
+        if "stored-matches" in path:
+            return stored
+        if "mmr-history" in path:
+            return history
+        return {"current": {"tier": {"id": 15, "name": "Platinum 1"}, "rr": 12, "last_change": 21}}
+
+    saved = Mock()
+    rank_image = AsyncMock(return_value=SimpleNamespace(fp=BytesIO(b"rank")))
+    sent = []
+    guild = SimpleNamespace(id=1, get_member=Mock(return_value=object()))
+    client = Mock(wait_until_ready=AsyncMock(), is_closed=Mock(side_effect=[False, True]),
+                  get_guild=Mock(return_value=guild),
+                  get_channel=Mock(return_value=SimpleNamespace(send=AsyncMock(side_effect=lambda **kw: sent.append(kw)))))
+    feeds = {"1": {"channel_id": 2, "started_at": "2026-11-01T00:00:00Z", "seen": ["match"]}}
+    await background_tasks.matchfeed_loop(
+        client=client, load_matchfeeds=lambda: feeds, load_accounts=lambda: {"1": {"name": "Friend", "tag": "EUW"}},
+        load_rank_states=lambda: {"friend#euw": {"tier_id": 14, "tier_name": "Gold 3", "rr": 90}},
+        save_rank_states=saved, cached_api=api, cached=AsyncMock(), match_detail=AsyncMock(), parse_time=parse_time,
+        play_match_image=AsyncMock(), rank_change_image=rank_image, save_matchfeed_progress=Mock(), AFFINITY="eu",
+    )
+    assert rank_image.await_args.kwargs["context"] == "After a 13–8 win on Bind  ·  Second time in Platinum this act"
+    state = saved.call_args.args[0]["friend#euw"]
+    assert state["tier_id"] == 15 and state["act"] == {"season": "new", "complete": True, "groups": {"4": 2}}
+    assert sent[0]["content"].endswith("ranked up!")

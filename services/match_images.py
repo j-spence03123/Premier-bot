@@ -96,7 +96,8 @@ async def play_match_image(detail, queued_players, all_teammates, representative
 
 
 async def rank_change_image(player_name, from_id, from_name, to_id, to_name, direction,
-                            from_rr=None, to_rr=None, rr_change=None, *, icon_maps, icon_img, draw_rank_change_card):
+                            from_rr=None, to_rr=None, rr_change=None, *, icon_maps, icon_img, draw_rank_change_card,
+                            context=None):
     """Build a rank-change card in the same dark, coral-accented style as match cards."""
     try:
         tier_icons = (await icon_maps()).get("tiers", {})
@@ -110,6 +111,6 @@ async def rank_change_image(player_name, from_id, from_name, to_id, to_name, dir
     loop = asyncio.get_running_loop()
     buffer = await loop.run_in_executor(
         None, draw_rank_change_card, player_name, from_name, to_name, direction, old_icon, new_icon,
-        from_rr, to_rr, rr_change
+        from_rr, to_rr, rr_change, context
     )
     return discord.File(buffer, filename="rank-change.png")

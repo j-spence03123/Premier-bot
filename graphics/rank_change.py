@@ -8,41 +8,48 @@ from .assets import match_font
 
 
 def draw_rank_change_card(player_name, from_name, to_name, direction, old_icon, new_icon,
-                          from_rr=None, to_rr=None, rr_change=None):
-    image = Image.new("RGB", (1200, 500), (17, 16, 20))
+                          from_rr=None, to_rr=None, rr_change=None, context=None):
+    # A context line ("After a 13–8 win on Bind") sits under the title and pushes the panels down.
+    shift = 30 if context else 0
+    image = Image.new("RGB", (1200, 500 + shift), (17, 16, 20))
     draw = ImageDraw.Draw(image)
     accent = (77, 190, 116) if direction == "up" else (224, 86, 99)
-    draw.rounded_rectangle((22, 22, 1178, 478), radius=18, fill=(28, 27, 32), outline=(57, 55, 63), width=2)
+    draw.rounded_rectangle((22, 22, 1178, 478 + shift), radius=18, fill=(28, 27, 32), outline=(57, 55, 63), width=2)
     draw.text((58, 70), "RANK UP" if direction == "up" else "DERANK", font=match_font(38, True), fill=accent, anchor="lm")
     draw.text((1140, 70), player_name, font=match_font(27, True), fill=(245, 244, 247), anchor="rm")
-    draw.line((58, 108, 1142, 108), fill=(58, 56, 64), width=2)
+    if context:
+        context_font = match_font(20)
+        while draw.textlength(context, font=context_font) > 1084 and len(context) > 1:
+            context = context[:-2] + "…"
+        draw.text((58, 112), context, font=context_font, fill=(170, 168, 178), anchor="lm")
+    draw.line((58, 108 + shift, 1142, 108 + shift), fill=(58, 56, 64), width=2)
 
-    panels = ((60, 148, 530, 425), (670, 148, 1140, 425))
+    panels = ((60, 148 + shift, 530, 425 + shift), (670, 148 + shift, 1140, 425 + shift))
     for panel in panels:
         draw.rounded_rectangle(panel, radius=12, fill=(34, 33, 39), outline=(61, 59, 67), width=1)
-    draw.text((295, 178), "FROM", font=match_font(16, True), fill=(154, 151, 161), anchor="mm")
-    draw.text((905, 178), "TO", font=match_font(16, True), fill=(154, 151, 161), anchor="mm")
+    draw.text((295, 178 + shift), "FROM", font=match_font(16, True), fill=(154, 151, 161), anchor="mm")
+    draw.text((905, 178 + shift), "TO", font=match_font(16, True), fill=(154, 151, 161), anchor="mm")
 
     def paste_tier_icon(icon, center_x):
         if icon is None:
             return
         fitted = ImageOps.contain(icon.convert("RGBA"), (132, 132), method=Image.Resampling.LANCZOS)
-        image.paste(fitted, (center_x - fitted.width // 2, 202 + (132 - fitted.height) // 2), fitted)
+        image.paste(fitted, (center_x - fitted.width // 2, 202 + shift + (132 - fitted.height) // 2), fitted)
 
     paste_tier_icon(old_icon, 295)
     paste_tier_icon(new_icon, 905)
-    draw.text((295, 365), from_name.upper(), font=match_font(27, True), fill=(218, 216, 222), anchor="mm")
-    draw.text((905, 365), to_name.upper(), font=match_font(27, True), fill=(250, 249, 251), anchor="mm")
-    draw.text((295, 398), f"{from_rr} RR" if from_rr is not None else "RR unavailable",
+    draw.text((295, 365 + shift), from_name.upper(), font=match_font(27, True), fill=(218, 216, 222), anchor="mm")
+    draw.text((905, 365 + shift), to_name.upper(), font=match_font(27, True), fill=(250, 249, 251), anchor="mm")
+    draw.text((295, 398 + shift), f"{from_rr} RR" if from_rr is not None else "RR unavailable",
               font=match_font(18), fill=(170, 168, 178), anchor="mm")
-    draw.text((905, 398), f"{to_rr} RR" if to_rr is not None else "RR unavailable",
+    draw.text((905, 398 + shift), f"{to_rr} RR" if to_rr is not None else "RR unavailable",
               font=match_font(18), fill=(170, 168, 178), anchor="mm")
     # Draw the arrow directly so it does not depend on font glyph coverage.
-    draw.line((570, 282, 626, 282), fill=accent, width=6)
-    draw.line((611, 266, 627, 282, 611, 298), fill=accent, width=6, joint="curve")
+    draw.line((570, 282 + shift, 626, 282 + shift), fill=accent, width=6)
+    draw.line((611, 266 + shift, 627, 282 + shift, 611, 298 + shift), fill=accent, width=6, joint="curve")
     change_text = f"{rr_change:+d} RR" if isinstance(rr_change, int) else "RR unavailable"
-    draw.text((600, 325), change_text, font=match_font(17, True), fill=accent, anchor="mm")
-    draw.text((600, 348), "LAST GAME", font=match_font(11), fill=(154, 151, 161), anchor="mm")
+    draw.text((600, 325 + shift), change_text, font=match_font(17, True), fill=accent, anchor="mm")
+    draw.text((600, 348 + shift), "LAST GAME", font=match_font(11), fill=(154, 151, 161), anchor="mm")
     buffer = io.BytesIO()
     image.save(buffer, "PNG")
     buffer.seek(0)

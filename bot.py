@@ -409,9 +409,9 @@ async def play_match_image(detail, queued_players, all_teammates, representative
 
 
 async def rank_change_image(player_name, from_id, from_name, to_id, to_name, direction,
-                            from_rr=None, to_rr=None, rr_change=None):
+                            from_rr=None, to_rr=None, rr_change=None, *, context=None):
     return await match_images.rank_change_image(
-        player_name, from_id, from_name, to_id, to_name, direction, from_rr, to_rr, rr_change,
+        player_name, from_id, from_name, to_id, to_name, direction, from_rr, to_rr, rr_change, context=context,
         icon_maps=icon_maps, icon_img=icon_img, draw_rank_change_card=draw_rank_change_card,
     )
 
