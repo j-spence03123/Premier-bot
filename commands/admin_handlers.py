@@ -4,7 +4,7 @@ from __future__ import annotations
 HELP_SECTIONS = [
     ("Premier", ["schedule", "results", "mapresults", "scout", "agent", "lineup", "clearagent", "playbook"]),
     ("Players", ["register", "registersmurf", "unregister", "registeredusers", "accounts", "rank", "player", "recent", "play"]),
-    ("Server managers", ["registeruser", "assignagent", "createplaybook", "importlineup", "importplaybook", "setschedule", "matchfeed", "matchfeed_tone", "squadlore", "testreminder", "testplaycard", "testrankcard", "clearcache"]),
+    ("Server managers", ["registeruser", "assignagent", "createplaybook", "importlineup", "importplaybook", "setschedule", "matchfeed", "matchfeed_tone", "squadlore", "testreminder", "testplaycard", "testrankcard", "weeklyrecap", "clearcache"]),
     ("Troubleshooting", ["findteam", "debug"]),
 ]
 
@@ -57,6 +57,17 @@ async def test_rank_card(interaction, scenario, *, rank_change_image):
     card = await rank_change_image(interaction.user.display_name, from_id, from_name, to_id, to_name, direction, from_rr, to_rr, rr_change)
     direction_text = 'ranked up' if direction == 'up' else 'deranked'
     await interaction.followup.send(content=f'{interaction.user.mention} {direction_text}!', file=card, ephemeral=True)
+
+async def weekly_recap_preview(interaction, *, preview_weekly_recap):
+    if not interaction.guild or not interaction.permissions.administrator:
+        return await interaction.response.send_message('Only server administrators can use this command.', ephemeral=True)
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    try:
+        card = await preview_weekly_recap(interaction.guild)
+    except Exception as exc:
+        return await interaction.followup.send(f"Couldn't build the weekly recap: {exc}", ephemeral=True)
+    await interaction.followup.send('Preview of this week so far. The full recap posts in the match feed channel every Sunday at 20:00 UK time.',
+                                    file=card, ephemeral=True)
 
 async def help_cmd(interaction, *, HELP_SECTIONS, render_help_card, tree):
     await interaction.response.defer(ephemeral=True)

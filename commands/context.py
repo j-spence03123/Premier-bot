@@ -45,6 +45,7 @@ class CommandContext:
     playbook_map_autocomplete: Callable[..., Any]
     playbook_service: PlaybookService
     playbook_strategy_file: Callable[..., Any]
+    preview_weekly_recap: Callable[..., Any]
     read_google_sheet: Callable[..., Any]
     rank_change_image: Callable[..., Any]
     recent_scoreboard_view: Callable[..., Any]

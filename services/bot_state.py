@@ -63,6 +63,12 @@ class BotState:
     def save_rank_states(self, value):
         self._write(self.settings.rankstates_file, value)
 
+    def load_weekly_recaps(self):
+        return self._read(self.settings.weekly_recaps_file)
+
+    def save_weekly_recaps(self, value):
+        self._write(self.settings.weekly_recaps_file, value)
+
     def load_queue_schedules(self):
         return self._read(self.settings.queue_schedule_file)
 

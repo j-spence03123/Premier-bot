@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import json
 import time
 
@@ -34,6 +35,7 @@ from services.playbook_service import PlaybookDataError, PlaybookService
 from services.google_sheet_import import read_google_sheet
 from services.session_recap import prepare_session_recap
 from services.valorant_api import HenrikDevClient
+from services import weekly_recap
 from utils.formatting import fmt_range, parse_time
 from utils.premier_seasons import extract_premier_seasons
 from utils.queue_schedule import next_queue_start
@@ -93,10 +95,12 @@ class BotClient(commands.Bot):
         self.queue_reminder_task = asyncio.create_task(queue_reminder_loop(), name="queue-reminders")
         self.play_session_task = asyncio.create_task(play_session_loop(), name="play-sessions")
         self.matchfeed_task = asyncio.create_task(matchfeed_loop(), name="match-feed")
+        self.weekly_recap_task = asyncio.create_task(weekly_recap_loop(), name="weekly-recap")
         self._background_tasks = [
             self.queue_reminder_task,
             self.play_session_task,
             self.matchfeed_task,
+            self.weekly_recap_task,
         ]
         self._background_tasks_started = True
 
@@ -354,6 +358,37 @@ async def matchfeed_loop():
     )
 
 
+load_weekly_recaps = state.load_weekly_recaps
+
+
+save_weekly_recaps = state.save_weekly_recaps
+
+
+async def weekly_recap_loop():
+    return await weekly_recap.weekly_recap_loop(
+        client=client,
+        load_matchfeeds=load_matchfeeds,
+        load_accounts=load_accounts,
+        load_weekly_recaps=load_weekly_recaps,
+        save_weekly_recaps=save_weekly_recaps,
+        cached_api=cached_api,
+        history=history,
+        load_summaries=load_summaries,
+        affinity=AFFINITY,
+        groq_api_key=SETTINGS.groq_api_key,
+        groq_model=SETTINGS.groq_model,
+    )
+
+
+async def preview_weekly_recap(guild):
+    return await weekly_recap.preview_weekly_recap(
+        guild, now=datetime.now(timezone.utc), load_accounts=load_accounts,
+        load_weekly_recaps=load_weekly_recaps, load_matchfeeds=load_matchfeeds, cached_api=cached_api,
+        history=history, load_summaries=load_summaries, affinity=AFFINITY,
+        http_session=client.http_session, groq_api_key=SETTINGS.groq_api_key, groq_model=SETTINGS.groq_model,
+    )
+
+
 async def prepare_recap(session, tone):
     return await prepare_session_recap(
         session, tone, accounts=load_accounts(), cached_api=cached_api, affinity=AFFINITY,
@@ -505,6 +540,7 @@ def make_command_context() -> CommandContext:
         playbook_map_autocomplete=playbook_map_autocomplete,
         playbook_service=playbook_service,
         playbook_strategy_file=playbook_strategy_file,
+        preview_weekly_recap=preview_weekly_recap,
         read_google_sheet=fetch_import_sheet,
         rank_change_image=rank_change_image,
         recent_scoreboard_view=recent_scoreboard_view,

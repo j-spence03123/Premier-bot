@@ -50,6 +50,11 @@ class AdministrationCog(commands.Cog):
     async def test_rank_card(self, interaction: discord.Interaction, scenario: app_commands.Choice[str]):
         return await admin_handlers.test_rank_card(interaction, scenario, rank_change_image=self.runtime.rank_change_image)
 
+    @app_commands.command(name='weeklyrecap', description='Preview this week\'s recap so far (posts automatically Sundays 20:00 UK)')
+    @app_commands.default_permissions(administrator=True)
+    async def weekly_recap(self, interaction: discord.Interaction):
+        return await admin_handlers.weekly_recap_preview(interaction, preview_weekly_recap=self.runtime.preview_weekly_recap)
+
     @app_commands.command(name='help', description='List all commands')
     async def help_cmd(self, interaction: discord.Interaction):
         return await admin_handlers.help_cmd(interaction, HELP_SECTIONS=admin_handlers.HELP_SECTIONS, render_help_card=render_help_card, tree=self.runtime.tree)

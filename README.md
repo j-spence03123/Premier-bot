@@ -41,3 +41,10 @@ AI recaps can use one matching callback when it fits the server's tone. A posted
 three reports without a saved callback, and the same entry needs at least six reports in between.
 The bot also tracks recorded games together and map streaks for each lineup of linked members from the first match
 posted after the update.
+
+## Weekly recap
+
+With an automatic matchfeed configured, the bot posts a weekly recap card in the matchfeed channel every Sunday at
+20:00 UK time, covering Sunday 20:00 to Sunday 20:00. It shows each registered player's RR gain or loss, the top three
+competitive games of the week, rank ups, the Premier team's results (left out when no Premier games were played) and a
+short summary (AI-written when `GROQ_API_KEY` is set). Administrators can preview the week so far with `/weeklyrecap`.
