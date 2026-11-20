@@ -5,7 +5,7 @@ import re
 
 from PIL import Image, ImageDraw, ImageOps
 
-from .assets import PLAY_TAG_STYLES, chip_width, draw_result_chip, draw_soft_box, match_font, wrap_image_text
+from .assets import PLAY_TAG_STYLES, chip_width, draw_soft_box, match_font, wrap_image_text
 from utils.formatting import parse_time
 from utils.match_summary import _clutch_wins, _deaths_by_round, _play_headline, _play_recap
 
@@ -335,8 +335,10 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     badge = f"{'WIN' if won else 'DRAW' if our_score == their_score else 'LOSS'} {our_score}-{their_score}"
     badge_font = match_font(23, True)
     badge_box = (width - side_pad - max(208, chip_width(badge, badge_font)), 186, width - side_pad, 238)
-    draw_result_chip(image, badge_box, headline_color, badge, badge_font, fill_opacity=90, gradient=False)
+    draw_soft_box(image, badge_box, accent, opacity=238, radius=7)
     draw = ImageDraw.Draw(image)
+    draw.text(((badge_box[0] + badge_box[2]) // 2, (badge_box[1] + badge_box[3]) // 2), badge,
+              font=badge_font, fill=(255, 250, 250), anchor="mm")
     headline_size = 32
     headline_font = match_font(headline_size, True)
     while headline_size > 22 and draw.textlength(headline, font=headline_font) > width - 64:
