@@ -25,26 +25,26 @@ async def test_play_card(interaction, *, play_match_image, load_matchfeeds):
         return await interaction.response.send_message('Only server administrators can use this command.', ephemeral=True)
     await interaction.response.defer(ephemeral=True)
     now = datetime.now(timezone.utc)
-    kevin = {'puuid': 'test-kevin-puuid', 'name': 'Kevin', 'tag': 'TEST', 'team_id': 'Red', 'agent': {'id': 'dade69b4-4f5a-8528-247b-219e5a1facd6', 'name': 'Fade'}, 'stats': {'kills': 14, 'deaths': 17, 'assists': 11, 'score': 6963, 'headshots': 49, 'bodyshots': 106, 'legshots': 12}}
-    spam = {'puuid': 'test-spam-puuid', 'name': 'Spam', 'tag': 'TEST', 'team_id': 'Red', 'agent': {'id': '22697a3d-45bf-8dd7-4fec-84a9e28c69d7', 'name': 'Chamber'}, 'stats': {'kills': 7, 'deaths': 18, 'assists': 7, 'score': 3927, 'headshots': 18, 'bodyshots': 74, 'legshots': 6}}
+    player1 = {'puuid': 'test-player1-puuid', 'name': 'Player', 'tag': 'TEST', 'team_id': 'Red', 'agent': {'id': 'dade69b4-4f5a-8528-247b-219e5a1facd6', 'name': 'Fade'}, 'stats': {'kills': 14, 'deaths': 17, 'assists': 11, 'score': 6963, 'headshots': 49, 'bodyshots': 106, 'legshots': 12}}
+    player2 = {'puuid': 'test-player2-puuid', 'name': 'Player2', 'tag': 'TEST', 'team_id': 'Red', 'agent': {'id': '22697a3d-45bf-8dd7-4fec-84a9e28c69d7', 'name': 'Chamber'}, 'stats': {'kills': 7, 'deaths': 18, 'assists': 7, 'score': 3927, 'headshots': 18, 'bodyshots': 74, 'legshots': 6}}
     blue = {'puuid': 'test-opponent-puuid', 'name': 'Opponent', 'tag': 'TEST', 'team_id': 'Blue', 'agent': {'id': '707eab51-4836-f488-046a-cda6bf494859', 'name': 'Viper'}, 'stats': {'kills': 19, 'deaths': 10, 'assists': 5, 'score': 6540, 'headshots': 44, 'bodyshots': 83, 'legshots': 10}}
     kills = []
     for round_number in range(1, 22):
-        killer = kevin if round_number % 2 else spam
+        killer = player1 if round_number % 2 else player2
         if round_number == 11:
-            killers = [spam, spam, spam, spam, kevin]
+            killers = [player2, player2, player2, player2, player1]
         else:
-            killers = [killer, blue, kevin if killer is spam else spam]
+            killers = [killer, blue, player1 if killer is player2 else player2]
         for kill_index, player in enumerate(killers):
-            victim = blue if player['team_id'] == 'Red' else kevin if kill_index % 2 else spam
-            weapon = 'Operator' if player is spam and round_number == 11 else 'Sheriff' if round_number == 1 else 'Vandal'
+            victim = blue if player['team_id'] == 'Red' else player1 if kill_index % 2 else player2
+            weapon = 'Operator' if player is player2 and round_number == 11 else 'Sheriff' if round_number == 1 else 'Vandal'
             kills.append({'round': round_number, 'time_in_round_in_ms': 1000 + kill_index * 2500, 'killer': {'puuid': player['puuid']}, 'victim': {'puuid': victim['puuid']}, 'weapon': {'name': weapon, 'type': 'Weapon'}})
-    detail = {'metadata': {'map': {'id': '224b0a95-48b9-f703-1bd8-67aca101a61f', 'name': 'Abyss'}, 'started_at': now.isoformat(), 'game_length_in_ms': 44 * 60 * 1000}, 'teams': [{'team_id': 'Red', 'won': False, 'rounds': {'won': 8, 'lost': 13}, 'premier_roster': {'name': 'Queue'}}, {'team_id': 'Blue', 'won': True, 'rounds': {'won': 13, 'lost': 8}, 'premier_roster': {'name': 'Opponents'}}], 'players': [kevin, spam, blue], 'kills': kills}
+    detail = {'metadata': {'map': {'id': '224b0a95-48b9-f703-1bd8-67aca101a61f', 'name': 'Abyss'}, 'started_at': now.isoformat(), 'game_length_in_ms': 44 * 60 * 1000}, 'teams': [{'team_id': 'Red', 'won': False, 'rounds': {'won': 8, 'lost': 13}, 'premier_roster': {'name': 'Queue'}}, {'team_id': 'Blue', 'won': True, 'rounds': {'won': 13, 'lost': 8}, 'premier_roster': {'name': 'Opponents'}}], 'players': [player1, player2, blue], 'kills': kills}
     feed = load_matchfeeds().get(str(interaction.guild_id)) or {}
     tone = normalize_tone(feed.get('tone'))
-    card = await play_match_image(detail, [kevin, spam], [kevin, spam], kevin, summary_players=[kevin, spam], tone=tone,
+    card = await play_match_image(detail, [player1, player2], [player1, player2], player1, summary_players=[player1, player2], tone=tone,
                                   footer=format_match_footer(1, 2),
-                                  discord_names={"kevin#test": "Kevin", "spam#test": "Spam"})
+                                  discord_names={"player#test": "Player", "player2#test": "Player2"})
     await interaction.followup.send(file=card, ephemeral=True)
 
 async def test_rank_card(interaction, scenario, *, rank_change_image):

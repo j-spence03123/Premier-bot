@@ -15,7 +15,7 @@ Description\tSplit A through main and mid.
 Step\tSmoke heaven before entering from main.
 Step\tWait for the mid players before planting.
 Utility\tSave one smoke for the retake.
-Assignment\tKevin\tSmoke heaven and call the execute.
+Assignment\tPlayer\tSmoke heaven and call the execute.
 Link\thttps://example.com/reference"""
 
 SHEET_PATH = re.compile(r"/spreadsheets/(?:u/\d+/)?d/([A-Za-z0-9_-]{10,200})(?:/.*)?")

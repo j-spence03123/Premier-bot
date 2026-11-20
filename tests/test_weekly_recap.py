@@ -92,11 +92,11 @@ def test_games_and_top_three_are_limited_to_the_week():
             stored("b", START + timedelta(days=2), score=4000, red=5, blue=13)]
     games = window_games(rows, START, END)
     assert [game["match_id"] for game in games] == ["a", "b"]
-    players = [{"name": "Kevin", "games": games},
-               {"name": "Spam", "games": window_games([stored("c", START + timedelta(days=3), score=7000)],
+    players = [{"name": "Player", "games": games},
+               {"name": "Player2", "games": window_games([stored("c", START + timedelta(days=3), score=7000)],
                                                        START, END)}]
     best = top_games(players)
-    assert [(game["player"], game["match_id"]) for game in best] == [("Spam", "c"), ("Kevin", "a"), ("Kevin", "b")]
+    assert [(game["player"], game["match_id"]) for game in best] == [("Player2", "c"), ("Player", "a"), ("Player", "b")]
 
 
 def test_premier_section_is_omitted_without_games_this_week():
@@ -112,11 +112,11 @@ def sample_week(premier=True):
     games = window_games([stored("a", START + timedelta(hours=1), score=6000),
                           stored("b", START + timedelta(days=2), score=4000, red=5, blue=13)], START, END)
     players = [
-        {"name": "Kevin", "games": games, "rr": 35, "partial": False, "rank": "Gold 2",
+        {"name": "Player", "games": games, "rr": 35, "partial": False, "rank": "Gold 2",
          "rank_changes": [{"from_id": 12, "from": "Gold 1", "to_id": 13, "to": "Gold 2", "direction": "up"}]},
-        {"name": "Spam", "smurf": True, "games": games[:1], "rr": -12, "partial": True, "rank": "Silver 1",
+        {"name": "Player2", "smurf": True, "games": games[:1], "rr": -12, "partial": True, "rank": "Silver 1",
          "rank_changes": [{"from_id": 9, "from": "Silver 2", "to_id": 8, "to": "Silver 1", "direction": "down"}]},
-        {"name": "Idle", "games": [], "rr": 0, "partial": False, "rank": None},
+        {"name": "Player3", "games": [], "rr": 0, "partial": False, "rank": None},
     ]
     result = premier_results([({"started_at": (START + timedelta(days=4)).isoformat()},
                                {"won": False, "score": "9-13", "map": "Lotus", "them": "Rivals",
@@ -126,12 +126,12 @@ def sample_week(premier=True):
 
 def test_build_week_and_local_summary():
     week = sample_week()
-    assert [player["name"] for player in week["players"]] == ["Kevin", "Idle", "Spam"]
+    assert [player["name"] for player in week["players"]] == ["Player", "Player3", "Player2"]
     assert week["squad"] == {"games": 2, "wins": 1, "losses": 1}
-    assert [(c["player"], c["direction"]) for c in week["rank_changes"]] == [("Kevin", "up"), ("Spam", "down")]
+    assert [(c["player"], c["direction"]) for c in week["rank_changes"]] == [("Player", "up"), ("Player2", "down")]
     text = local_summary(week)
-    assert "Kevin climbed the most with +35 RR" in text and "Premier went 0W 1L" in text
-    assert "Rank ups for Kevin." in text and "Deranks for Spam." in text
+    assert "Player climbed the most with +35 RR" in text and "Premier went 0W 1L" in text
+    assert "Rank ups for Player." in text and "Deranks for Player2." in text
     assert "Quiet week" in local_summary(build_week([], START, END))
 
 
@@ -165,7 +165,7 @@ async def test_run_posts_once_per_week_and_saves_baselines():
                              http_session=None)
     kwargs = dict(
         client=client, load_matchfeeds=lambda: {"1": {"channel_id": 5}},
-        load_accounts=lambda: {"10": {"name": "Kevin", "tag": "EU"}},
+        load_accounts=lambda: {"10": {"name": "Player", "tag": "EU"}},
         load_weekly_recaps=lambda: state, save_weekly_recaps=lambda value: state.update(value),
         cached_api=fake_api, history=AsyncMock(return_value=[]), load_summaries=AsyncMock(),
         affinity="eu", groq_api_key=None, groq_model="m", pace=0,
@@ -178,7 +178,7 @@ async def test_run_posts_once_per_week_and_saves_baselines():
     assert sent["content"].startswith("**Weekly recap**")
     assert sent["file"].filename == "weekly-recap-2026-11-15.png"
     assert state["guilds"]["1"]["last_week_end"] == END.isoformat()
-    assert state["baselines"]["kevin#eu"]["elo"] == 922
+    assert state["baselines"]["player#eu"]["elo"] == 922
     kwargs["load_summaries"].assert_not_called()  # no Premier games this week
 
 
@@ -206,7 +206,7 @@ async def test_pacing_only_waits_before_real_requests(monkeypatch):
         sleeps.append(delay)
 
     monkeypatch.setattr(weekly_recap.asyncio, "sleep", fake_sleep)
-    accounts = {"10": {"name": "Kevin", "tag": "EU"}, "11": {"name": "Spam", "tag": "EU"}}
+    accounts = {"10": {"name": "Player", "tag": "EU"}, "11": {"name": "Player2", "tag": "EU"}}
     common = dict(cached_api=fake_api, affinity="eu", start=START, end=END, baselines={}, pace=2.3)
     players = await collect_player_data(accounts, is_cached=lambda path, **params: True, **common)
     assert len(players) == 2 and sleeps == []

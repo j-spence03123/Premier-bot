@@ -360,46 +360,46 @@ TONE: {tone}"""
 
 RECAP_EXAMPLES = (
     ("""RESULT: Defeat 8-13 on Lotus
-STORY_ANGLE: Spam ranked up to Diamond 1 yesterday, then went 7/18/7 (0.39 KD) in this loss
-SECOND_ANGLE: Kevin took 3 first bloods but finished at 0.82 KD
+STORY_ANGLE: Player2 ranked up to Diamond 1 yesterday, then went 7/18/7 (0.39 KD) in this loss
+SECOND_ANGLE: Player took 3 first bloods but finished at 0.82 KD
 HALVES: first half 6-6, second half 2-7
 FEATURED:
-- Kevin (Jett): 14/17/4 (0.82 KD), 198 ACS, 3 first bloods, clutches 0/2, first half 10/9, second half 4/8, best weapon Vandal (9 kills)
-- Spam (Chamber): 7/18/7 (0.39 KD), 121 ACS, 1 first blood, clutches 0/1, first half 5/8, second half 2/10, best weapon Operator (5 kills)
+- Player (Jett): 14/17/4 (0.82 KD), 198 ACS, 3 first bloods, clutches 0/2, first half 10/9, second half 4/8, best weapon Vandal (9 kills)
+- Player2 (Chamber): 7/18/7 (0.39 KD), 121 ACS, 1 first blood, clutches 0/1, first half 5/8, second half 2/10, best weapon Operator (5 kills)
 MULTIKILLS:
-- Spam 4K in round 11 (Operator)
+- Player2 4K in round 11 (Operator)
 SQUAD_AVG_ACS: 160
-RANK: Spam ranked up from Platinum 3 to Diamond 1 yesterday""",
-     {"headline": "SPAM'S DIAMOND DREAM LASTS 24 HOURS",
-      "body": "@Kevin opened three rounds with first bloods and posted a 0.82 KD in a losing effort, solid work in "
-              "a match that got away 8-13 on Lotus. @Spam ranked up to Diamond 1 yesterday; today he came back down "
+RANK: Player2 ranked up from Platinum 3 to Diamond 1 yesterday""",
+     {"headline": "PLAYER2'S DIAMOND DREAM LASTS 24 HOURS",
+      "body": "@Player opened three rounds with first bloods and posted a 0.82 KD in a losing effort, solid work in "
+              "a match that got away 8-13 on Lotus. @Player2 ranked up to Diamond 1 yesterday; today he came back down "
               "to earth with 7/18/7 and a 0.39 KD, a catastrophic scoreline that erased any momentum the promotion "
               "carried. His 4K in round 11 with the Operator was the highlight of a sentinel performance that "
-              "otherwise looked like someone playing two ranks below. @Kevin fell from a 10/9 half to 4/8 on "
-              "defense, but the match belonged to @Spam's disaster — the kind of game where the respawn screen "
+              "otherwise looked like someone playing two ranks below. @Player fell from a 10/9 half to 4/8 on "
+              "defense, but the match belonged to @Player2's disaster — the kind of game where the respawn screen "
               "starts looking like a second office."}),
     ("""RESULT: Defeat 5-13 on Haven
-STORY_ANGLE: Kevin aced round 1 with the Sheriff, then went 0.81 KD for the rest of the match
+STORY_ANGLE: Player aced round 1 with the Sheriff, then went 0.81 KD for the rest of the match
 SECOND_ANGLE: the team won 0 rounds in the second half (0-6)
 HALVES: first half 5-7, second half 0-6
 FEATURED:
-- Kevin (Jett): 18/16/2 (1.12 KD), 205 ACS, 2 first bloods, clutches 0/4, first half 12/7, second half 6/9, after round 1: 13/16 (0.81 KD), best weapon Vandal (8 kills)
-- ria (Sage): 7/17/5 (0.41 KD), 115 ACS, 0 first bloods, clutches 0/1, first half 5/9, second half 2/8, best weapon Odin (4 kills)
+- Player (Jett): 18/16/2 (1.12 KD), 205 ACS, 2 first bloods, clutches 0/4, first half 12/7, second half 6/9, after round 1: 13/16 (0.81 KD), best weapon Vandal (8 kills)
+- Player2 (Sage): 7/17/5 (0.41 KD), 115 ACS, 0 first bloods, clutches 0/1, first half 5/9, second half 2/8, best weapon Odin (4 kills)
 MULTIKILLS:
-- Kevin ace in round 1 (Sheriff)
-- ria 3K in round 12 (Odin)
+- Player ace in round 1 (Sheriff)
+- Player2 3K in round 12 (Odin)
 SQUAD_AVG_ACS: 160
-LORE: "Clutch Allergy" (inside joke) -> Kevin; evidence: Kevin went 0/4 in clutches.
+LORE: "Clutch Allergy" (inside joke) -> Player; evidence: Player went 0/4 in clutches.
 TOGETHER: 62 games""",
-     {"headline": "FEMBOY ACES ROUND 1 THEN FORGETS TO PLAY",
-      "body": "@Kevin opened round 1 with a Sheriff ace — a literal 5K — and then proceeded to go 0.81 KD for the "
+     {"headline": "PLAYER ACES ROUND 1 THEN FORGETS TO PLAY",
+      "body": "@Player opened round 1 with a Sheriff ace — a literal 5K — and then proceeded to go 0.81 KD for the "
               "rest of the match as if the ace used up his entire skill budget for the day. Haven got cooked 5-13, "
               "with the squad going 0 rounds in the entire second half while the enemy closed it out 6-0 after the "
-              "break. @ria on Sage put up a 0.41 KD and 115 ACS — catastrophically below even the bare minimum "
+              "break. @Player2 on Sage put up a 0.41 KD and 115 ACS — catastrophically below even the bare minimum "
               "you'd expect from a support anchor — and her best weapon was an Odin, which at least explains the 3K "
               "in round 12 even if it explains nothing about the other 14 deaths. The combined squad ACS barely "
               "scraped past 160, and the scoreline of 5-13 wasn't even competitive enough to be called a collapse — "
-              "it was a forfeit in slow motion. @Kevin went 0/4 in clutches on top of everything, so the Clutch "
+              "it was a forfeit in slow motion. @Player went 0/4 in clutches on top of everything, so the Clutch "
               "Allergy didn't just survive — it showed up, watched the ace, and said 'my work here is done.' "
               "Sixty-two games together, and game 41 of this arc confirms: the ace was the universe trolling, not a "
               "sign of things to come."}),

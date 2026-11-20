@@ -48,14 +48,14 @@ def grounded(opening):
 @pytest.mark.asyncio
 async def test_session_summary_receives_match_order_and_rr_coverage():
     http = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {
-        "content": '{"summary":"Kevin finished the session with a win on Haven."}'
+        "content": '{"summary":"Player finished the session with a win on Haven."}'
     }}]}))
-    data = {"players": ["Kevin"], "matches": [
+    data = {"players": ["Player"], "matches": [
         {"map": "Haven", "result": "W", "score": "13–8", "moments": [], "rank_changes": [],
-         "rr_changes": [{"player_id": "p1", "player": "Kevin", "change": 20}]},
+         "rr_changes": [{"player_id": "p1", "player": "Player", "change": 20}]},
     ]}
     result = await generate_session_summary(http, "test-key", "test-model", data, "kind")
-    assert result == "Kevin finished the session with a win on Haven."
+    assert result == "Player finished the session with a win on Haven."
     facts = json.loads(http.request[1]["json"]["messages"][1]["content"])
     assert facts["rr_totals"][0]["rr"] == 20
     assert facts["matches"][0]["map"] == "Haven"
@@ -229,23 +229,23 @@ def _match_fixture(player, round_winners, moments, map_name="Corrode"):
 
 
 def test_lopsided_win_local_story_stays_factual():
-    player = {"puuid": "p1", "name": "DOM", "team_id": "Red", "is_smurf": True,
+    player = {"puuid": "p1", "name": "Player", "team_id": "Red", "is_smurf": True,
               "stats": {"kills": 20, "deaths": 7, "assists": 5, "score": 5445}}
     detail = _match_fixture(player, ["Red"] * 10 + ["Blue"] * 2 + ["Red"] * 3,
                             [(9, "Vandal", 4), (14, "Phantom", 1), (15, "Vandal", 4)])
-    factual_story = ("DOM dropped a 4K in the final round with the Vandal. "
+    factual_story = ("Player dropped a 4K in the final round with the Vandal. "
                      "The team led 10–2 at halftime and won 13–2 on Corrode.")
     assert local_matchfeed_recap(detail, [player], player)["recap"] == factual_story
 
 
 def test_partial_round_data_never_labels_a_play_match_winning():
-    player = {"puuid": "p1", "name": "DOM", "team_id": "Red"}
+    player = {"puuid": "p1", "name": "Player", "team_id": "Red"}
     detail = _match_fixture(player, ["Red"] * 10 + ["Blue"] * 2 + ["Red"] * 3, [(15, "Vandal", 4)])
     detail["rounds"].pop(4)
     facts = recap_facts(detail, [player], player)
     assert "half_results" not in facts and "match_winning_round" not in facts
     assert local_matchfeed_recap(detail, [player], player)["recap"] == (
-        "DOM dropped a 4K in round 15 with the Vandal. The team won 13–2 on Corrode."
+        "Player dropped a 4K in round 15 with the Vandal. The team won 13–2 on Corrode."
     )
 
 

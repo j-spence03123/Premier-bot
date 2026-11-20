@@ -16,8 +16,8 @@ from utils.session_summary import session_rr_totals
 
 BASE = datetime(2026, 11, 17, 18, tzinfo=timezone.utc)
 PLAYERS = [
-    {"puuid": "kevin", "name": "Kevin", "tag": "TEST", "team_id": "Red"},
-    {"puuid": "spam", "name": "Spam", "tag": "TEST", "team_id": "Red"},
+    {"puuid": "player", "name": "Player", "tag": "TEST", "team_id": "Red"},
+    {"puuid": "player2", "name": "Player2", "tag": "TEST", "team_id": "Red"},
 ]
 
 
@@ -30,7 +30,7 @@ def add_match(feed, mid="one", players=None, started=BASE, won=13, lost=8):
         "teams": [{"team_id": "Red", "rounds": {"won": won, "lost": lost}}],
         "kills": [
             {"round": 10, "time_in_round_in_ms": index * 1000,
-             "killer": {"puuid": "spam"}, "victim": {}}
+             "killer": {"puuid": "player2"}, "victim": {}}
             for index in range(1, 5)
         ],
     }
@@ -195,7 +195,7 @@ async def test_missing_rr_is_refreshed_by_match_id_before_summary(monkeypatch):
         {"match_id": "one", "mmr_change_to_last_game": 24},
     ])
     result = await prepare_session_recap(
-        session, "kind", accounts={"1": {"name": "Kevin", "tag": "TEST"}},
+        session, "kind", accounts={"1": {"name": "Player", "tag": "TEST"}},
         cached_api=api, affinity="eu", http_session=object(), api_key="test", model="test",
     )
     assert result == "A strong session."
@@ -221,7 +221,7 @@ async def test_poller_only_closes_sessions_after_successful_history_check(monkey
     feeds = {"1": {"channel_id": 1}}
     await background_tasks.matchfeed_loop(
         client=client, load_matchfeeds=lambda: feeds,
-        load_accounts=lambda: {"1": {"name": "Kevin", "tag": "TEST"}},
+        load_accounts=lambda: {"1": {"name": "Player", "tag": "TEST"}},
         load_rank_states=lambda: {}, save_rank_states=Mock(), cached_api=api,
         cached=AsyncMock(), match_detail=AsyncMock(), parse_time=Mock(),
         play_match_image=AsyncMock(), rank_change_image=AsyncMock(),
