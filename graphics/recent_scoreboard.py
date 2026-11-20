@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageOps
 
-from .assets import chip_width, draw_result_chip, encode_png, match_font, result_color
+from .assets import chip_width, draw_soft_box, encode_png, match_font
 from utils.formatting import parse_time
 from utils.recent_scoreboard import build_scoreboard
 
@@ -47,8 +47,10 @@ def render_recent_scoreboard(detail, target, period, map_path, agent_icons, rank
     label = f"{'WIN' if won else 'LOSS' if won is False else 'DRAW'} {score.get('won', '?')}-{score.get('lost', '?')}"
     chip_font = match_font(23, True)
     box = (width - pad - max(190, chip_width(label, chip_font)), 177, width - pad, 230)
-    draw_result_chip(image, box, result_color(won), label, chip_font, fill_opacity=90, gradient=False)
+    colour = (72, 181, 105) if won else (220, 86, 94) if won is False else (116, 116, 130)
+    draw_soft_box(image, box, colour, opacity=238, radius=7)
     draw = ImageDraw.Draw(image)
+    draw.text(((box[0] + box[2]) // 2, (box[1] + box[3]) // 2), label, font=chip_font, fill=(255, 250, 250), anchor="mm")
     period_title = {"full": "FULL MATCH", "first": "FIRST HALF", "second": "SECOND HALF + OVERTIME"}[period]
     draw.text((pad, hero + 36), f"SCOREBOARD  /  {period_title}", font=match_font(22, True),
               fill=(240, 99, 106), anchor="lm")
