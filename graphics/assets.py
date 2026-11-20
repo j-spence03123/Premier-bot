@@ -192,9 +192,15 @@ def draw_result_glow(image, box, color, radius=9, opacity=70, fade_at=0.45):
     draw_gradient_box(image, box, color, opacity, 0, radius=radius, fade_at=fade_at)
 
 
-def draw_result_chip(image, box, color, text, chip_font, fill_opacity=40):
-    """Tinted chip with centred text in the chip colour, e.g. 'WIN 13-7'. Raise the fill over busy map art."""
-    draw_tinted_box(image, box, color, radius=7, fill_opacity=fill_opacity)
+def draw_result_chip(image, box, color, text, chip_font, fill_opacity=40, gradient=True):
+    """Tinted chip with centred text in the chip colour, e.g. 'WIN 13-7'. Raise the fill over busy map art.
+
+    ``gradient=False`` gives a flat tint instead of the fading one.
+    """
+    if gradient:
+        draw_tinted_box(image, box, color, radius=7, fill_opacity=fill_opacity)
+    else:
+        draw_soft_box(image, box, color, opacity=fill_opacity, radius=7, outline=(*color, 110))
     ImageDraw.Draw(image).text(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2), text, font=chip_font,
                                fill=color, anchor="mm")
 

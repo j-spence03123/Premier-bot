@@ -17,7 +17,7 @@ def draw_scoreboard(s, icons):
 
     d.rectangle([0, 0, W, 6], fill=accent)
     label, label_font = ("VICTORY" if s["won"] else "DEFEAT"), font(26, True)
-    draw_result_chip(img, (24, 26, 24 + chip_width(label, label_font), 70), accent, label, label_font)
+    draw_result_chip(img, (24, 26, 24 + chip_width(label, label_font), 70), accent, label, label_font, gradient=False)
     d = ImageDraw.Draw(img)
     d.text((W // 2, 46), f"{s['rw']} : {s['rl']}", font=font(42, True), fill=WHITE, anchor="mm")
     started = parse_time(s.get("started"))

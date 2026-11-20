@@ -47,7 +47,7 @@ def render_recent_scoreboard(detail, target, period, map_path, agent_icons, rank
     label = f"{'WIN' if won else 'LOSS' if won is False else 'DRAW'} {score.get('won', '?')}-{score.get('lost', '?')}"
     chip_font = match_font(23, True)
     box = (width - pad - max(190, chip_width(label, chip_font)), 177, width - pad, 230)
-    draw_result_chip(image, box, result_color(won), label, chip_font, fill_opacity=70)
+    draw_result_chip(image, box, result_color(won), label, chip_font, fill_opacity=90, gradient=False)
     draw = ImageDraw.Draw(image)
     period_title = {"full": "FULL MATCH", "first": "FIRST HALF", "second": "SECOND HALF + OVERTIME"}[period]
     draw.text((pad, hero + 36), f"SCOREBOARD  /  {period_title}", font=match_font(22, True),

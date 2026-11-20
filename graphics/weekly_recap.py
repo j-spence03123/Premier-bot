@@ -188,7 +188,7 @@ def draw_weekly_recap(week, map_art=None):
         letter, color = _result(game)
         chip_text, chip_font = f"{letter} {game['score']}".strip(), match_font(20, True)
         draw_result_chip(image, (right - 16 - chip_width(chip_text, chip_font, 10), y + 16, right - 16, y + 50),
-                         color, chip_text, chip_font)
+                         color, chip_text, chip_font, gradient=False)
         draw = ImageDraw.Draw(image)
         draw.text((inner, y + 62), _fit(measure, f"{game['player']} · {game['agent']}", match_font(24),
                                         card_width - 36), font=match_font(24), fill=WHITE)
@@ -234,7 +234,7 @@ def draw_weekly_recap(week, map_art=None):
         row_y = y + 64
         for match in premier["matches"]:
             letter, color = _result(match)
-            draw_result_chip(image, (left + 18, row_y - 3, left + 46, row_y + 27), color, letter, match_font(18, True))
+            draw_result_chip(image, (left + 18, row_y - 3, left + 46, row_y + 27), color, letter, match_font(18, True), gradient=False)
             draw = ImageDraw.Draw(image)
             score_width = measure.textlength(match["score"], font=match_font(22))
             text = f"{match['map']} vs {match['opponent']}"
