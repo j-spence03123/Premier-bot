@@ -1,8 +1,9 @@
 """Render the weekly squad recap card in the bot's dark card style."""
 
 import io
+from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 from graphics.assets import match_font, wrap_image_text
 from services.matchfeed import MATCHFEED_DAY_ZONE
@@ -70,6 +71,26 @@ def _draw_rank_movement(draw, measure, right, y, change, color):
     return to_width + from_width + arrow_width + gap * 2
 
 
+def _paste_map_background(image, path, box, radius):
+    """Cover-crop map art into ``box``, darken it for legible text and clip it to the card's rounded corners."""
+    if not path or not Path(path).exists():
+        return False
+    try:
+        with Image.open(path) as source:
+            art = ImageOps.fit(source.convert("RGB"), (box[2] - box[0], box[3] - box[1]),
+                               method=Image.Resampling.LANCZOS)
+    except Exception:
+        return False
+    art = Image.blend(art, Image.new("RGB", art.size, PANEL), 0.72)
+    # Slightly darker at the bottom where the stat line sits.
+    shade = Image.linear_gradient("L").resize(art.size)
+    art = Image.composite(Image.new("RGB", art.size, BACKGROUND), art, shade.point(lambda value: value * 0.45))
+    mask = Image.new("L", art.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, art.width - 1, art.height - 1), radius=radius, fill=255)
+    image.paste(art, box[:2], mask)
+    return True
+
+
 def _side_panel_height(week):
     changes = max(len(week["rank_changes"]), 1)
     premier = week.get("premier")
@@ -77,7 +98,9 @@ def _side_panel_height(week):
     return 64 + rows * SIDE_ROW + 10
 
 
-def draw_weekly_recap(week):
+def draw_weekly_recap(week, map_art=None):
+    """``map_art`` maps casefolded map names to splash image paths used behind the top-game cards."""
+    map_art = map_art or {}
     measure = ImageDraw.Draw(Image.new("RGB", (WIDTH, 1)))
     body = match_font(23)
     small = match_font(19)
@@ -152,7 +175,9 @@ def draw_weekly_recap(week):
     for index, game in enumerate(games):
         left = PAD + index * (card_width + card_gap)
         right = left + card_width
-        draw.rounded_rectangle((left, y, right, y + GAME_CARD_HEIGHT), radius=12, fill=PANEL,
+        box = (left, y, right, y + GAME_CARD_HEIGHT)
+        has_art = _paste_map_background(image, map_art.get(str(game.get("map", "")).casefold()), box, 12)
+        draw.rounded_rectangle(box, radius=12, fill=None if has_art else PANEL,
                                outline=GOLD_EDGE if index == 0 else PANEL_EDGE)
         inner = left + 18
         draw.text((inner, y + 14), f"{index + 1}.", font=match_font(30, True), fill=GOLD if index == 0 else WHITE)

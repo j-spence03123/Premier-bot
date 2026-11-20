@@ -7,8 +7,10 @@ import pytest
 from PIL import Image
 
 from graphics.weekly_recap import draw_weekly_recap
-from services.weekly_recap import (RECAP_ZONE, build_week, completed_week, local_summary, premier_results,
-                                   run_weekly_recap, top_games, week_end_at_or_before, window_games,
+import services.weekly_recap as weekly_recap
+from services.weekly_recap import (PREFETCH_MAX_LEAD, RECAP_ZONE, build_week, collect_player_data, completed_week,
+                                   local_summary, next_week_end, prefetch_lead, premier_results, run_weekly_recap,
+                                   top_game_map_art, top_games, week_end_at_or_before, window_games,
                                    window_rank_changes, window_rr)
 
 START = datetime(2026, 11, 8, 20, tzinfo=RECAP_ZONE)
@@ -194,3 +196,52 @@ async def test_run_skips_weeks_that_ended_long_ago():
 def test_card_bytes_are_png():
     week = sample_week()
     assert draw_weekly_recap(week).getvalue()[:8] == BytesIO(b"\x89PNG\r\n\x1a\n").getvalue()
+
+
+@pytest.mark.asyncio
+async def test_pacing_only_waits_before_real_requests(monkeypatch):
+    sleeps = []
+
+    async def fake_sleep(delay):
+        sleeps.append(delay)
+
+    monkeypatch.setattr(weekly_recap.asyncio, "sleep", fake_sleep)
+    accounts = {"10": {"name": "Kevin", "tag": "EU"}, "11": {"name": "Spam", "tag": "EU"}}
+    common = dict(cached_api=fake_api, affinity="eu", start=START, end=END, baselines={}, pace=2.3)
+    players = await collect_player_data(accounts, is_cached=lambda path, **params: True, **common)
+    assert len(players) == 2 and sleeps == []
+    # Uncached requests are spaced out; the very first one goes straight away.
+    await collect_player_data(accounts, is_cached=lambda path, **params: False, **common)
+    assert len(sleeps) == 5 and all(0 < delay <= 2.3 for delay in sleeps)
+
+
+def test_prefetch_starts_early_enough_but_inside_cache_ttl():
+    assert next_week_end(datetime(2026, 11, 15, 19, 55, tzinfo=RECAP_ZONE)) == END
+    assert next_week_end(END) == END + timedelta(days=7)
+    assert prefetch_lead(4) == timedelta(seconds=4 * 3 * 2.3 + 60)
+    assert prefetch_lead(500) == PREFETCH_MAX_LEAD
+
+
+@pytest.mark.asyncio
+async def test_map_art_is_fetched_once_per_map_and_failures_are_skipped():
+    games = [{"map": "Bind", "map_id": "b"}, {"map": "bind", "map_id": "b"}, {"map": "Lotus", "map_id": None}]
+    calls = []
+
+    async def map_art(map_id, map_name):
+        calls.append(map_name)
+        if map_name == "Lotus":
+            raise RuntimeError("offline")
+        return "/tmp/bind.jpg"
+
+    assert await top_game_map_art(games, map_art) == {"bind": "/tmp/bind.jpg"}
+    assert calls == ["Bind", "Lotus"]
+    assert await top_game_map_art(games, None) == {}
+
+
+def test_top_game_cards_show_map_art(tmp_path):
+    art = tmp_path / "bind.png"
+    Image.new("RGB", (640, 360), (200, 40, 40)).save(art)
+    week = sample_week()
+    plain = Image.open(draw_weekly_recap(week)).convert("RGB")
+    with_art = Image.open(draw_weekly_recap(week, {"bind": art, "lotus": tmp_path / "missing.png"})).convert("RGB")
+    assert plain.size == with_art.size and plain.tobytes() != with_art.tobytes()

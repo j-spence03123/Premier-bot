@@ -136,6 +136,10 @@ class JsonCache:
             if keyed_lock.users == 0 and self._locks.get(key) is keyed_lock:
                 del self._locks[key]
 
+    def is_fresh(self, key):
+        """True when ``get`` would return this key from cache without fetching."""
+        return self._is_fresh(self.entries.get(key), time.time())
+
     def peek(self, key):
         """Return a cache entry without fetching; used for freshness diagnostics."""
         return self.entries.get(key)

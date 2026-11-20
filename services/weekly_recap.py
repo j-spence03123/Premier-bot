@@ -30,6 +30,9 @@ BASELINE_TOLERANCE = timedelta(hours=3)
 REQUEST_PACING_SECONDS = 2.3
 TOP_GAMES = 3
 STORED_MATCH_PAGE = 30
+REQUESTS_PER_ACCOUNT = 3
+PREFETCH_MARGIN = timedelta(minutes=1)
+PREFETCH_MAX_LEAD = timedelta(minutes=9)  # stay inside the 10-minute cache TTL so warmed entries are still fresh
 
 
 # ---------- Week windows ----------
@@ -53,6 +56,18 @@ def week_start_for(end):
 def completed_week(now):
     end = week_end_at_or_before(now)
     return week_start_for(end), end
+
+
+def next_week_end(now):
+    """The Sunday 20:00 UK time that closes the week in progress."""
+    local = week_end_at_or_before(now).astimezone(RECAP_ZONE)
+    return datetime.combine(local.date() + timedelta(days=7), RECAP_TIME, tzinfo=RECAP_ZONE)
+
+
+def prefetch_lead(account_count, pace=REQUEST_PACING_SECONDS):
+    """How long before the week closes to start warming the cache so it finishes around 20:00."""
+    estimate = timedelta(seconds=account_count * REQUESTS_PER_ACCOUNT * pace) + PREFETCH_MARGIN
+    return min(estimate, PREFETCH_MAX_LEAD)
 
 
 # ---------- Pure calculations ----------
@@ -151,7 +166,8 @@ def window_games(stored, start, end):
             game = parse_stored(row)
         except (AttributeError, TypeError, ValueError, ZeroDivisionError):
             continue
-        games[match_id] = {**game, "match_id": match_id, "started_at": started}
+        games[match_id] = {**game, "match_id": match_id, "started_at": started,
+                           "map_id": (meta.get("map") or {}).get("id")}
     return sorted(games.values(), key=lambda game: game["started_at"])
 
 
@@ -313,8 +329,35 @@ async def ai_summary(http_session, api_key, model, week, tone):
 
 # ---------- Data collection ----------
 
-async def collect_player_data(accounts, *, cached_api, affinity, start, end, baselines, pace=REQUEST_PACING_SECONDS):
-    """Fetch stored matches, rank history and current rank once per linked account."""
+class RequestPacer:
+    """Keeps real API requests at least ``interval`` seconds apart; cache hits never wait."""
+
+    def __init__(self, interval):
+        self.interval = interval
+        self.last = None
+
+    async def wait(self):
+        if not self.interval:
+            return
+        loop = asyncio.get_running_loop()
+        if self.last is not None:
+            delay = self.interval - (loop.time() - self.last)
+            if delay > 0:
+                await asyncio.sleep(delay)
+        self.last = loop.time()
+
+
+def unique_account_count(accounts):
+    return len({f"{account['name']}#{account['tag']}".casefold() for _, account, _ in iter_linked_accounts(accounts)})
+
+
+async def collect_player_data(accounts, *, cached_api, affinity, start, end, baselines, pace=REQUEST_PACING_SECONDS,
+                              is_cached=None):
+    """Fetch stored matches, rank history and current rank once per linked account.
+
+    ``is_cached(path, **params)`` lets requests the cache can answer skip the pacing delay.
+    """
+    pacer = RequestPacer(pace)
     seen, results = set(), []
     for user_id, account, smurf in iter_linked_accounts(accounts):
         riot_key = f"{account['name']}#{account['tag']}".casefold()
@@ -325,18 +368,22 @@ async def collect_player_data(accounts, *, cached_api, affinity, start, end, bas
         name, tag = quote(account["name"]), quote(account["tag"])
         stored, history, current = [], [], None
         complete = True
-        for kind in ("stored", "history", "current"):
-            if pace:
-                await asyncio.sleep(pace)
+        requests = (
+            ("stored", f"/valorant/v1/stored-matches/{region}/{name}/{tag}",
+             {"mode": "competitive", "size": STORED_MATCH_PAGE}),
+            ("history", f"/valorant/v1/mmr-history/{region}/{name}/{tag}", {}),
+            ("current", f"/valorant/v3/mmr/{region}/pc/{name}/{tag}", {}),
+        )
+        for kind, path, params in requests:
             try:
+                if not (is_cached and is_cached(path, **params)):
+                    await pacer.wait()
+                data = await cached_api(path, 600, **params)
                 if kind == "stored":
-                    stored = await cached_api(f"/valorant/v1/stored-matches/{region}/{name}/{tag}", 600,
-                                              mode="competitive", size=STORED_MATCH_PAGE) or []
+                    stored = data or []
                 elif kind == "history":
-                    data = await cached_api(f"/valorant/v1/mmr-history/{region}/{name}/{tag}", 600)
                     history = data if isinstance(data, list) else []
                 else:
-                    data = await cached_api(f"/valorant/v3/mmr/{region}/pc/{name}/{tag}", 600)
                     rank = (data.get("current") or {}) if isinstance(data, dict) else {}
                     tier = rank.get("tier") or {}
                     if tier:
@@ -403,12 +450,26 @@ async def guild_players(guild, players):
     return kept
 
 
-async def build_guild_recap(guild, players, premier, start, end, *, tone, http_session, api_key, model):
+async def top_game_map_art(games, map_art):
+    """Map splash paths for the top games, keyed by casefolded map name. Missing art is simply left out."""
+    if map_art is None:
+        return {}
+    wanted = {}
+    for game in games:
+        wanted.setdefault(str(game.get("map", "")).casefold(), (game.get("map_id"), game.get("map")))
+    names = list(wanted)
+    paths = await asyncio.gather(*(map_art(*wanted[name]) for name in names), return_exceptions=True)
+    return {name: path for name, path in zip(names, paths) if path and not isinstance(path, BaseException)}
+
+
+async def build_guild_recap(guild, players, premier, start, end, *, tone, http_session, api_key, model, map_art=None):
     from graphics.weekly_recap import draw_weekly_recap
 
     week = build_week(await guild_players(guild, players), start, end, premier)
-    week["summary"] = await ai_summary(http_session, api_key, model, week, tone) or local_summary(week)
-    buffer = await asyncio.to_thread(draw_weekly_recap, week)
+    summary, backgrounds = await asyncio.gather(ai_summary(http_session, api_key, model, week, tone),
+                                                top_game_map_art(week["top_games"], map_art))
+    week["summary"] = summary or local_summary(week)
+    buffer = await asyncio.to_thread(draw_weekly_recap, week, backgrounds)
     stamp = end.astimezone(RECAP_ZONE).strftime("%Y-%m-%d")
     return discord.File(buffer, filename=f"weekly-recap-{stamp}.png"), week
 
@@ -421,24 +482,45 @@ def recap_caption(start, end):
 # ---------- Scheduled posting ----------
 
 async def weekly_recap_loop(*, client, load_matchfeeds, load_accounts, load_weekly_recaps, save_weekly_recaps,
-                            cached_api, history, load_summaries, affinity, groq_api_key, groq_model):
+                            cached_api, history, load_summaries, affinity, groq_api_key, groq_model,
+                            is_cached=None, map_art=None):
     await client.wait_until_ready()
+    prefetched_for = None
     while not client.is_closed():
+        now = datetime.now(timezone.utc)
         try:
+            upcoming = next_week_end(now)
+            if prefetched_for != upcoming and is_cached is not None:
+                accounts = load_accounts()
+                if now >= upcoming - prefetch_lead(unique_account_count(accounts)) and load_matchfeeds():
+                    prefetched_for = upcoming
+                    await prefetch_weekly_recap(accounts, cached_api=cached_api, is_cached=is_cached,
+                                                history=history, load_summaries=load_summaries, affinity=affinity,
+                                                start=week_start_for(upcoming), end=upcoming)
+                    now = datetime.now(timezone.utc)
             await run_weekly_recap(
-                client=client, now=datetime.now(timezone.utc), load_matchfeeds=load_matchfeeds,
+                client=client, now=now, load_matchfeeds=load_matchfeeds,
                 load_accounts=load_accounts, load_weekly_recaps=load_weekly_recaps,
                 save_weekly_recaps=save_weekly_recaps, cached_api=cached_api, history=history,
                 load_summaries=load_summaries, affinity=affinity, groq_api_key=groq_api_key, groq_model=groq_model,
+                is_cached=is_cached, map_art=map_art,
             )
         except Exception as exc:
             print(f"Weekly recap failed: {exc}")
         await asyncio.sleep(60)
 
 
+async def prefetch_weekly_recap(accounts, *, cached_api, is_cached, history, load_summaries, affinity, start, end,
+                                pace=REQUEST_PACING_SECONDS):
+    """Warm the API cache just before the week closes so the 20:00 post only needs cache hits."""
+    await collect_player_data(accounts, cached_api=cached_api, affinity=affinity, start=start, end=end,
+                              baselines={}, pace=pace, is_cached=is_cached)
+    await collect_premier(history=history, load_summaries=load_summaries, start=start, end=end)
+
+
 async def run_weekly_recap(*, client, now, load_matchfeeds, load_accounts, load_weekly_recaps, save_weekly_recaps,
                            cached_api, history, load_summaries, affinity, groq_api_key, groq_model,
-                           pace=REQUEST_PACING_SECONDS):
+                           pace=REQUEST_PACING_SECONDS, is_cached=None, map_art=None):
     """Post last week's recap to every match feed that has not had it yet."""
     start, end = completed_week(now)
     if now - end > POST_GRACE:
@@ -459,7 +541,7 @@ async def run_weekly_recap(*, client, now, load_matchfeeds, load_accounts, load_
 
     accounts = load_accounts()
     players = await collect_player_data(accounts, cached_api=cached_api, affinity=affinity, start=start, end=end,
-                                        baselines=recaps.get("baselines", {}), pace=pace)
+                                        baselines=recaps.get("baselines", {}), pace=pace, is_cached=is_cached)
     premier = await collect_premier(history=history, load_summaries=load_summaries, start=start, end=end) if due else None
 
     for guild_key, feed in due.items():
@@ -471,6 +553,7 @@ async def run_weekly_recap(*, client, now, load_matchfeeds, load_accounts, load_
             file, _ = await build_guild_recap(
                 guild, players, premier, start, end, tone=feed.get("tone"),
                 http_session=getattr(client, "http_session", None), api_key=groq_api_key, model=groq_model,
+                map_art=map_art,
             )
             await channel.send(content=recap_caption(start, end), file=file,
                                allowed_mentions=discord.AllowedMentions.none())
@@ -491,14 +574,16 @@ async def run_weekly_recap(*, client, now, load_matchfeeds, load_accounts, load_
 
 async def preview_weekly_recap(guild, *, now, load_accounts, load_weekly_recaps, load_matchfeeds, cached_api,
                                history, load_summaries, affinity, http_session, groq_api_key, groq_model,
-                               pace=REQUEST_PACING_SECONDS):
+                               pace=REQUEST_PACING_SECONDS, is_cached=None, map_art=None):
     """Recap of the current week so far, for admins to check the card."""
     start = week_end_at_or_before(now)
     recaps = load_weekly_recaps()
     feed = load_matchfeeds().get(str(guild.id)) or {}
     players = await collect_player_data(load_accounts(), cached_api=cached_api, affinity=affinity, start=start,
-                                        end=now, baselines=recaps.get("baselines", {}), pace=pace)
+                                        end=now, baselines=recaps.get("baselines", {}), pace=pace,
+                                        is_cached=is_cached)
     premier = await collect_premier(history=history, load_summaries=load_summaries, start=start, end=now)
     file, _ = await build_guild_recap(guild, players, premier, start, now, tone=feed.get("tone"),
-                                      http_session=http_session, api_key=groq_api_key, model=groq_model)
+                                      http_session=http_session, api_key=groq_api_key, model=groq_model,
+                                      map_art=map_art)
     return file

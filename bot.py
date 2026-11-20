@@ -137,8 +137,17 @@ async def cached(key, ttl, fn):
     return await cache_store.get(key, ttl, fn)
 
 
+def _api_cache_key(path, params):
+    return path + json.dumps(params, sort_keys=True)
+
+
 def cached_api(path, ttl, **params):
-    return cache_store.get(path + json.dumps(params, sort_keys=True), ttl, lambda: api(path, **params))
+    return cache_store.get(_api_cache_key(path, params), ttl, lambda: api(path, **params))
+
+
+def api_is_cached(path, **params):
+    """True when cached_api would answer this request without calling the API."""
+    return cache_store.is_fresh(_api_cache_key(path, params))
 
 
 match_history = MatchHistoryService(
@@ -372,19 +381,32 @@ async def weekly_recap_loop():
         load_weekly_recaps=load_weekly_recaps,
         save_weekly_recaps=save_weekly_recaps,
         cached_api=cached_api,
+        is_cached=api_is_cached,
         history=history,
         load_summaries=load_summaries,
         affinity=AFFINITY,
         groq_api_key=SETTINGS.groq_api_key,
         groq_model=SETTINGS.groq_model,
+        map_art=weekly_map_art,
     )
+
+
+async def weekly_map_art(map_id, map_name):
+    """Splash art path for a map, looked up by name in the map catalog, falling back to its ID."""
+    try:
+        catalog = await valorant_map_catalog()
+    except Exception:
+        catalog = []
+    by_name = {str(item.get('displayName', '')).casefold(): item.get('uuid') for item in catalog or []}
+    map_uuid = by_name.get(str(map_name).casefold()) or map_id
+    return await map_background_path(map_uuid, map_name) if map_uuid else None
 
 
 async def preview_weekly_recap(guild):
     return await weekly_recap.preview_weekly_recap(
         guild, now=datetime.now(timezone.utc), load_accounts=load_accounts,
         load_weekly_recaps=load_weekly_recaps, load_matchfeeds=load_matchfeeds, cached_api=cached_api,
-        history=history, load_summaries=load_summaries, affinity=AFFINITY,
+        is_cached=api_is_cached, map_art=weekly_map_art, history=history, load_summaries=load_summaries, affinity=AFFINITY,
         http_session=client.http_session, groq_api_key=SETTINGS.groq_api_key, groq_model=SETTINGS.groq_model,
     )
 
