@@ -335,7 +335,7 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     badge = f"{'WIN' if won else 'DRAW' if our_score == their_score else 'LOSS'} {our_score}-{their_score}"
     badge_font = match_font(23, True)
     badge_box = (width - side_pad - max(208, chip_width(badge, badge_font)), 186, width - side_pad, 238)
-    draw_result_chip(image, badge_box, headline_color, badge, badge_font, fill_opacity=90)
+    draw_result_chip(image, badge_box, headline_color, badge, badge_font, fill_opacity=70)
     draw = ImageDraw.Draw(image)
     headline_size = 32
     headline_font = match_font(headline_size, True)

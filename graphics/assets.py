@@ -3,7 +3,7 @@
 from pathlib import Path
 import io
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 
 
 FONT_REG = [
@@ -142,9 +142,54 @@ def result_color(won):
     return WIN_COLOR if won is True else LOSS_COLOR if won is False else DRAW_COLOR
 
 
-def draw_tinted_box(image, box, color, radius=8, fill_opacity=40, edge_opacity=110):
-    """Low-opacity fill with a matching outline: the win/loss tint used for chips and panels."""
-    draw_soft_box(image, box, color, opacity=fill_opacity, radius=radius, outline=(*color, edge_opacity))
+def draw_gradient_box(image, box, color, start_opacity, end_opacity, radius=8, direction="horizontal",
+                      outline=None, fade_at=1.0):
+    """Rounded box filled with ``color`` fading from ``start_opacity`` to ``end_opacity``.
+
+    ``direction`` is "horizontal" (left to right) or "vertical" (top to bottom); the fade finishes at
+    ``fade_at`` of the way across and holds ``end_opacity`` after that.
+    """
+    left, top, right, bottom = box
+    width, height = right - left, bottom - top
+    if width <= 0 or height <= 0:
+        return
+    length = width if direction == "horizontal" else height
+    stop = max(1, round(length * fade_at))
+    ramp = [round(start_opacity + (end_opacity - start_opacity) * min(i / stop, 1)) for i in range(length)]
+    strip = Image.new("L", (length, 1))
+    strip.putdata(ramp)
+    alpha = strip.resize((width, height)) if direction == "horizontal" else strip.transpose(
+        Image.Transpose.ROTATE_270).resize((width, height))
+    scale = 4
+    mask = Image.new("L", (width * scale, height * scale), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, width * scale - 1, height * scale - 1),
+                                           radius=radius * scale, fill=255)
+    mask = mask.resize((width, height), Image.Resampling.LANCZOS)
+    # A little noise breaks up the visible steps a slow 8-bit fade makes on a dark background.
+    alpha = ImageChops.add(alpha, Image.effect_noise((width, height), 2).point(lambda v: min(max(v, 124), 132)),
+                           offset=-128)
+    alpha = Image.composite(alpha, Image.new("L", (width, height), 0), mask)
+    layer = Image.new("RGBA", (width, height), (*color, 0))
+    layer.putalpha(alpha)
+    if outline is not None:
+        edge = Image.new("RGBA", (width * scale, height * scale), (0, 0, 0, 0))
+        ImageDraw.Draw(edge).rounded_rectangle((0, 0, width * scale - 1, height * scale - 1),
+                                               radius=radius * scale, outline=outline, width=2 * scale)
+        layer.alpha_composite(edge.resize((width, height), Image.Resampling.LANCZOS))
+    base = image.crop(box).convert("RGBA")
+    base.alpha_composite(layer)
+    image.paste(base.convert(image.mode), (left, top))
+
+
+def draw_tinted_box(image, box, color, radius=8, fill_opacity=40, edge_opacity=110, direction="horizontal"):
+    """Win/loss tint: a gradient that is strongest at the start edge, with a matching outline."""
+    draw_gradient_box(image, box, color, round(fill_opacity * 1.8), round(fill_opacity * 0.35), radius=radius,
+                      direction=direction, outline=(*color, edge_opacity))
+
+
+def draw_result_glow(image, box, color, radius=9, opacity=70, fade_at=0.45):
+    """Soft result-coloured glow along the left of a row that fades out before the stats."""
+    draw_gradient_box(image, box, color, opacity, 0, radius=radius, fade_at=fade_at)
 
 
 def draw_result_chip(image, box, color, text, chip_font, fill_opacity=40):

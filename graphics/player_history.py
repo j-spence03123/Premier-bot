@@ -5,7 +5,7 @@ import re
 
 from PIL import Image, ImageDraw, ImageOps
 
-from .assets import draw_result_chip, encode_png, match_font
+from .assets import draw_result_chip, draw_result_glow, encode_png, match_font
 from utils.formatting import parse_time
 
 
@@ -107,6 +107,8 @@ def render_player_history(name, tag, mode, rows, icons, mmr=None, rank_icon=None
             accent = (76, 190, 116) if won is True else (225, 90, 98) if won is False else (154, 151, 160)
             draw.rounded_rectangle((pad, y, width - pad, y + row_h), radius=9,
                                    fill=(28, 27, 32), outline=(51, 49, 56))
+            draw_result_glow(image, (pad + 1, y + 1, width - pad - 1, y + row_h - 1), accent)
+            draw = ImageDraw.Draw(image)
             draw.rounded_rectangle((pad, y + 14, pad + 5, y + row_h - 14), radius=2, fill=accent)
             icon = icons.get((row.get("agent_id") or row.get("agent") or "").casefold())
             if icon:

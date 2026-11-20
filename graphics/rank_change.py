@@ -27,7 +27,7 @@ def draw_rank_change_card(player_name, from_name, to_name, direction, old_icon, 
     panels = ((60, 148 + shift, 530, 425 + shift), (670, 148 + shift, 1140, 425 + shift))
     draw.rounded_rectangle(panels[0], radius=12, fill=(34, 33, 39), outline=(61, 59, 67), width=1)
     draw.rounded_rectangle(panels[1], radius=12, fill=(34, 33, 39))
-    draw_tinted_box(image, panels[1], accent, radius=12, fill_opacity=22, edge_opacity=120)
+    draw_tinted_box(image, panels[1], accent, radius=12, fill_opacity=30, edge_opacity=120, direction="vertical")
     draw = ImageDraw.Draw(image)
     draw.text((295, 178 + shift), "FROM", font=match_font(16, True), fill=(154, 151, 161), anchor="mm")
     draw.text((905, 178 + shift), "TO", font=match_font(16, True), fill=(154, 151, 161), anchor="mm")
