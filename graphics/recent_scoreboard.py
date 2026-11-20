@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageOps
 
-from .assets import draw_soft_box, encode_png, match_font
+from .assets import chip_width, draw_result_chip, encode_png, match_font, result_color
 from utils.formatting import parse_time
 from utils.recent_scoreboard import build_scoreboard
 
@@ -41,11 +41,14 @@ def render_recent_scoreboard(detail, target, period, map_path, agent_icons, rank
     draw.text((pad, 205), f"Competitive · {duration // 60000} min · {date}" if duration else f"Competitive · {date}",
               font=match_font(19), fill=(207, 205, 210), anchor="lm")
     score = team.get("rounds") or {}
-    colour = (72, 181, 105) if team.get("won") else (220, 86, 94)
-    box = (width - pad - 190, 177, width - pad, 230)
-    draw_soft_box(image, box, colour, opacity=238, radius=7)
-    draw.text(((box[0] + box[2]) // 2, 203), f"{score.get('won', '?')}-{score.get('lost', '?')}",
-              font=match_font(23, True), fill="white", anchor="mm")
+    won = team.get("won")
+    if won is False and score.get("won") is not None and score.get("won") == score.get("lost"):
+        won = None
+    label = f"{'WIN' if won else 'LOSS' if won is False else 'DRAW'} {score.get('won', '?')}-{score.get('lost', '?')}"
+    chip_font = match_font(23, True)
+    box = (width - pad - max(190, chip_width(label, chip_font)), 177, width - pad, 230)
+    draw_result_chip(image, box, result_color(won), label, chip_font, fill_opacity=90)
+    draw = ImageDraw.Draw(image)
     period_title = {"full": "FULL MATCH", "first": "FIRST HALF", "second": "SECOND HALF + OVERTIME"}[period]
     draw.text((pad, hero + 36), f"SCOREBOARD  /  {period_title}", font=match_font(22, True),
               fill=(240, 99, 106), anchor="lm")

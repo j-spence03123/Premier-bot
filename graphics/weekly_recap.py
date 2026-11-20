@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageOps
 
-from graphics.assets import match_font, wrap_image_text
+from graphics.assets import chip_width, draw_result_chip, draw_tinted_box, match_font, wrap_image_text
 from services.matchfeed import MATCHFEED_DAY_ZONE
 
 WIDTH, PAD = 1200, 40
@@ -186,8 +186,10 @@ def draw_weekly_recap(week, map_art=None):
         inner = left + 18
         draw.text((inner, y + 14), f"{index + 1}.", font=match_font(30, True), fill=rank_color)
         letter, color = _result(game)
-        draw.text((right - 18, y + 20), f"{letter} {game['score']}".strip(), font=match_font(22, True),
-                  fill=color, anchor="ra")
+        chip_text, chip_font = f"{letter} {game['score']}".strip(), match_font(20, True)
+        draw_result_chip(image, (right - 16 - chip_width(chip_text, chip_font, 10), y + 16, right - 16, y + 50),
+                         color, chip_text, chip_font)
+        draw = ImageDraw.Draw(image)
         draw.text((inner, y + 62), _fit(measure, f"{game['player']} · {game['agent']}", match_font(24),
                                         card_width - 36), font=match_font(24), fill=WHITE)
         played = game["started_at"].astimezone(MATCHFEED_DAY_ZONE)
@@ -232,7 +234,8 @@ def draw_weekly_recap(week, map_art=None):
         row_y = y + 64
         for match in premier["matches"]:
             letter, color = _result(match)
-            draw.text((left + 20, row_y), letter, font=match_font(22, True), fill=color)
+            draw_result_chip(image, (left + 18, row_y - 3, left + 46, row_y + 27), color, letter, match_font(18, True))
+            draw = ImageDraw.Draw(image)
             score_width = measure.textlength(match["score"], font=match_font(22))
             text = f"{match['map']} vs {match['opponent']}"
             draw.text((left + 56, row_y), _fit(measure, text, match_font(22), half - 100 - score_width),

@@ -3,7 +3,7 @@
 import io
 from PIL import Image, ImageDraw
 
-from graphics.assets import match_font, wrap_image_text
+from graphics.assets import draw_result_chip, match_font, wrap_image_text
 from services.matchfeed import MATCHFEED_DAY_ZONE
 from utils.formatting import parse_time
 from utils.session_summary import session_rr_totals
@@ -60,7 +60,8 @@ def draw_session_recap(session):
     for index, match in enumerate(matches):
         y = results_top + index * 40
         color = (102, 207, 147) if match["result"] == "W" else coral if match["result"] == "L" else muted
-        draw.text((pad, y), match["result"], font=match_font(23, True), fill=color)
+        draw_result_chip(image, (pad, y - 2, pad + 34, y + 30), color, match["result"], match_font(19, True))
+        draw = ImageDraw.Draw(image)
         draw.text((pad + 50, y), match["map"], font=font, fill=white)
         draw.text((width - pad, y), match["score"], font=font, fill=muted, anchor="ra")
     draw.line((pad, story_top - 20, width - pad, story_top - 20), fill=(64, 61, 70))

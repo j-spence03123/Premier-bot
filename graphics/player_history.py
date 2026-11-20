@@ -5,7 +5,7 @@ import re
 
 from PIL import Image, ImageDraw, ImageOps
 
-from .assets import encode_png, match_font
+from .assets import draw_result_chip, encode_png, match_font
 from utils.formatting import parse_time
 
 
@@ -125,6 +125,10 @@ def render_player_history(name, tag, mode, rows, icons, mmr=None, rank_icon=None
                       ("ACS", str(row["acs"]), white)]
             for (heading, text, colour), x in zip(fields, (365, 500, 665, 835, 965, 1090)):
                 draw.text((x, y + 30), heading, font=label, fill=muted, anchor="mm")
-                draw.text((x, y + 62), text, font=value, fill=colour, anchor="mm")
+                if heading == "SCORE":
+                    draw_result_chip(image, (x - 52, y + 45, x + 52, y + 79), colour, text, value)
+                    draw = ImageDraw.Draw(image)
+                else:
+                    draw.text((x, y + 62), text, font=value, fill=colour, anchor="mm")
             y += row_h + 10
     return encode_png(image)

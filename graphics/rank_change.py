@@ -4,7 +4,7 @@ import io
 
 from PIL import Image, ImageDraw, ImageOps
 
-from .assets import match_font
+from .assets import draw_tinted_box, match_font
 
 
 def draw_rank_change_card(player_name, from_name, to_name, direction, old_icon, new_icon,
@@ -25,8 +25,10 @@ def draw_rank_change_card(player_name, from_name, to_name, direction, old_icon, 
     draw.line((58, 108 + shift, 1142, 108 + shift), fill=(58, 56, 64), width=2)
 
     panels = ((60, 148 + shift, 530, 425 + shift), (670, 148 + shift, 1140, 425 + shift))
-    for panel in panels:
-        draw.rounded_rectangle(panel, radius=12, fill=(34, 33, 39), outline=(61, 59, 67), width=1)
+    draw.rounded_rectangle(panels[0], radius=12, fill=(34, 33, 39), outline=(61, 59, 67), width=1)
+    draw.rounded_rectangle(panels[1], radius=12, fill=(34, 33, 39))
+    draw_tinted_box(image, panels[1], accent, radius=12, fill_opacity=22, edge_opacity=120)
+    draw = ImageDraw.Draw(image)
     draw.text((295, 178 + shift), "FROM", font=match_font(16, True), fill=(154, 151, 161), anchor="mm")
     draw.text((905, 178 + shift), "TO", font=match_font(16, True), fill=(154, 151, 161), anchor="mm")
 

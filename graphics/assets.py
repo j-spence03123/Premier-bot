@@ -132,3 +132,27 @@ def wrap_image_text(draw, text, image_font, max_width, max_lines=2, *, keep_nonb
     if truncated and lines:
         lines[-1] = lines[-1].rstrip(" .") + "..."
     return lines
+
+
+WIN_COLOR, LOSS_COLOR, DRAW_COLOR = (102, 207, 147), (240, 99, 106), (171, 170, 182)
+
+
+def result_color(won):
+    """Green for a win, red for a loss, grey for a draw or unknown result."""
+    return WIN_COLOR if won is True else LOSS_COLOR if won is False else DRAW_COLOR
+
+
+def draw_tinted_box(image, box, color, radius=8, fill_opacity=40, edge_opacity=110):
+    """Low-opacity fill with a matching outline: the win/loss tint used for chips and panels."""
+    draw_soft_box(image, box, color, opacity=fill_opacity, radius=radius, outline=(*color, edge_opacity))
+
+
+def draw_result_chip(image, box, color, text, chip_font, fill_opacity=40):
+    """Tinted chip with centred text in the chip colour, e.g. 'WIN 13-7'. Raise the fill over busy map art."""
+    draw_tinted_box(image, box, color, radius=7, fill_opacity=fill_opacity)
+    ImageDraw.Draw(image).text(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2), text, font=chip_font,
+                               fill=color, anchor="mm")
+
+
+def chip_width(text, chip_font, padding=14):
+    return int(chip_font.getlength(text)) + padding * 2

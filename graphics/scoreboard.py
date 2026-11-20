@@ -3,7 +3,7 @@ from datetime import timezone
 
 from PIL import Image, ImageDraw
 
-from .assets import COLS, GREY, WHITE, font
+from .assets import COLS, GREY, WHITE, chip_width, draw_result_chip, font
 from utils.formatting import parse_time
 
 
@@ -16,7 +16,9 @@ def draw_scoreboard(s, icons):
     accent = (46, 204, 113) if s["won"] else (231, 76, 60)
 
     d.rectangle([0, 0, W, 6], fill=accent)
-    d.text((24, 48), "VICTORY" if s["won"] else "DEFEAT", font=font(30, True), fill=accent, anchor="lm")
+    label, label_font = ("VICTORY" if s["won"] else "DEFEAT"), font(26, True)
+    draw_result_chip(img, (24, 26, 24 + chip_width(label, label_font), 70), accent, label, label_font)
+    d = ImageDraw.Draw(img)
     d.text((W // 2, 46), f"{s['rw']} : {s['rl']}", font=font(42, True), fill=WHITE, anchor="mm")
     started = parse_time(s.get("started"))
     sub = s["map"] + (started.astimezone(timezone.utc).strftime("  \u2022  %d %b %Y %H:%M UTC") if started else "")
