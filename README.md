@@ -1,50 +1,37 @@
 # Premier Bot
 
-A Python Discord bot for VALORANT Premier schedules, player statistics, match scoreboards, playbooks, and automatic match and rank updates, including optional AI-generated recaps.
+A Discord bot for a VALORANT squad. It posts match cards and rank changes automatically, shows player stats and
+scoreboards, tracks the Premier schedule and results, and can write match recaps with AI.
 
-## Dependencies
+## Getting started
 
-- Python 3.10+
-- `discord.py` >= 2.7
-- `aiohttp` >= 3.9
-- `python-dotenv` >= 1.0
-- `Pillow` >= 10.1
-- `tzdata` >= 2024.1
-
-All Python packages are listed in `requirements.txt`. A Discord bot token and HenrikDev API key are required; a Groq API key is optional for AI recaps.
-
-## Run
-
-From the repository directory:
+You need Python 3.10+, a Discord bot token and a [HenrikDev](https://docs.henrikdev.xyz) API key.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements.txt
+pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Fill in `DISCORD_TOKEN` and `HENRIK_API_KEY` in `.env`. Optionally set `GROQ_API_KEY` for AI recaps and configure your team settings.
+Fill in `DISCORD_TOKEN` and `HENRIK_API_KEY` in `.env` (and your team settings), then start the bot:
 
 ```bash
 python bot.py
 ```
 
-On Ubuntu, install `python3-venv` if needed. Install `fonts-dejavu-core` for image-rendering font support.
+Set `GROQ_API_KEY` as well if you want AI-written recaps.
 
-## Squad lore
+## Examples
 
-With an automatic matchfeed configured, server admins can use `/squadlore set` to save a nickname or inside joke.
-Choose a match trigger and optionally restrict it to a map or linked Discord member.
-Use `/squadlore list` to review entries and `/squadlore remove` to delete one.
-AI recaps can use one matching callback when it fits the server's tone. A posted callback is followed by at least
-three reports without a saved callback, and the same entry needs at least six reports in between.
-The bot also tracks recorded games together and map streaks for each lineup of linked members from the first match
-posted after the update.
+**Match feed:** posted automatically after a squad game.
 
-## Weekly recap
+![Match feed card](docs/images/match-feed.png)
 
-With an automatic matchfeed configured, the bot posts a weekly recap card in the matchfeed channel every Sunday at
-20:00 UK time, covering Sunday 20:00 to Sunday 20:00. It shows each registered player's RR gain or loss, the top three
-competitive games of the week, rank ups and deranks, the Premier team's results (left out when no Premier games were played) and a
-short summary (AI-written when `GROQ_API_KEY` is set). Administrators can preview the week so far with `/weeklyrecap`.
+**Rank up:** posted when a linked player ranks up or deranks.
+
+![Rank up card](docs/images/rank-up.png)
+
+**Player history:** from `/player`.
+
+![Player history card](docs/images/player-history.png)
