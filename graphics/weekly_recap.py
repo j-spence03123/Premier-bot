@@ -13,6 +13,9 @@ BACKGROUND = (17, 17, 22)
 PANEL, PANEL_EDGE = (28, 27, 32), (57, 55, 63)
 TILE = (38, 37, 43)
 CORAL, GREEN, GOLD, GOLD_EDGE = (240, 99, 106), (102, 207, 147), (255, 205, 90), (107, 90, 42)
+SILVER, SILVER_EDGE = (205, 212, 222), (88, 92, 102)
+BRONZE, BRONZE_EDGE = (214, 140, 84), (104, 70, 44)
+PODIUM = ((GOLD, GOLD_EDGE), (SILVER, SILVER_EDGE), (BRONZE, BRONZE_EDGE))
 WHITE, MUTED, RULE = (243, 242, 246), (171, 170, 182), (64, 61, 70)
 
 HEADER_HEIGHT = 170
@@ -176,11 +179,12 @@ def draw_weekly_recap(week, map_art=None):
         left = PAD + index * (card_width + card_gap)
         right = left + card_width
         box = (left, y, right, y + GAME_CARD_HEIGHT)
+        rank_color, edge_color = PODIUM[index] if index < len(PODIUM) else (WHITE, PANEL_EDGE)
         has_art = _paste_map_background(image, map_art.get(str(game.get("map", "")).casefold()), box, 12)
         draw.rounded_rectangle(box, radius=12, fill=None if has_art else PANEL,
-                               outline=GOLD_EDGE if index == 0 else PANEL_EDGE)
+                               outline=edge_color)
         inner = left + 18
-        draw.text((inner, y + 14), f"{index + 1}.", font=match_font(30, True), fill=GOLD if index == 0 else WHITE)
+        draw.text((inner, y + 14), f"{index + 1}.", font=match_font(30, True), fill=rank_color)
         letter, color = _result(game)
         draw.text((right - 18, y + 20), f"{letter} {game['score']}".strip(), font=match_font(22, True),
                   fill=color, anchor="ra")
