@@ -73,10 +73,10 @@ def render_player_history(name, tag, mode, rows, icons, mmr=None, rank_icon=None
     rank = rank_summary(mmr)
     draw.rounded_rectangle((pad, 138, width - pad, 255), radius=9, fill=(28, 27, 32), outline=(51, 49, 56))
     if rank_icon:
-        badge = ImageOps.contain(rank_icon.convert("RGBA"), (84, 84), method=Image.Resampling.LANCZOS)
-        image.paste(badge, (pad + 16 + (84 - badge.width) // 2, 154 + (84 - badge.height) // 2), badge)
-    draw.text((pad + 112, 163), "CURRENT RANK", font=label, fill=muted, anchor="lt")
-    draw.text((pad + 112, 191), _fit(draw, rank["rank"], value, 260), font=value, fill=white, anchor="lt")
+        badge = ImageOps.contain(rank_icon.convert("RGBA"), (68, 68), method=Image.Resampling.LANCZOS)
+        image.paste(badge, (pad + 16 + (68 - badge.width) // 2, 162 + (68 - badge.height) // 2), badge)
+    draw.text((pad + 100, 163), "CURRENT RANK", font=label, fill=muted, anchor="lt")
+    draw.text((pad + 100, 191), _fit(draw, rank["rank"], value, 260), font=value, fill=white, anchor="lt")
     rr = f"{rank['rr']} RR" if rank["rr"] is not None else "—"
     draw.text((470, 163), "RANK RATING", font=label, fill=muted, anchor="lt")
     draw.text((470, 191), rr, font=value, fill=white, anchor="lt")
@@ -125,7 +125,15 @@ def render_player_history(name, tag, mode, rows, icons, mmr=None, rank_icon=None
                       ("K/D/A", f"{row['k']}/{row['d']}/{row['a']}", blue),
                       ("ADR", str(row["adr"]), white), ("HS%", f"{row['hs']}%", white),
                       ("ACS", str(row["acs"]), white)]
-            for (heading, text, colour), x in zip(fields, (365, 500, 665, 835, 965, 1090)):
+            # Rank at the time of the match, in its own column after the map and agent.
+            draw.text((345, y + 30), "RANK", font=label, fill=muted, anchor="mm")
+            tier_icon = icons.get(f"tier:{row.get('tier')}") if row.get("tier") else None
+            if tier_icon:
+                tier_icon = ImageOps.contain(tier_icon.convert("RGBA"), (38, 38), method=Image.Resampling.LANCZOS)
+                image.paste(tier_icon, (345 - tier_icon.width // 2, y + 62 - tier_icon.height // 2), tier_icon)
+            else:
+                draw.text((345, y + 62), "—", font=value, fill=muted, anchor="mm")
+            for (heading, text, colour), x in zip(fields, (460, 575, 710, 850, 970, 1090)):
                 draw.text((x, y + 30), heading, font=label, fill=muted, anchor="mm")
                 if heading == "SCORE":
                     draw_result_chip(image, (x - 52, y + 45, x + 52, y + 79), colour, text, value)

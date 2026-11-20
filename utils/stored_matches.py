@@ -18,6 +18,7 @@ def parse_stored(m):
         "map": (meta.get("map") or {}).get("name", "?"),
         "agent": (s.get("character") or {}).get("name", "?"),
         "agent_id": str((s.get("character") or {}).get("id") or (s.get("character") or {}).get("uuid") or "").lower(),
+        "tier": s.get("tier") if isinstance(s.get("tier"), int) else None,
         "k": s.get("kills", 0),
         "d": s.get("deaths", 0),
         "a": s.get("assists", 0),

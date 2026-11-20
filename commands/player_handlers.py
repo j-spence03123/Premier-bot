@@ -254,10 +254,15 @@ async def player_cmd(interaction, name='', tag='', mode=None, region='', member=
             url = f'https://media.valorant-api.com/agents/{agent_id}/displayicon.png'
         if key and url:
             icon_urls[key] = url
+    # Rank at the time of each match, keyed "tier:<id>" next to the agent icons.
+    for row in rows:
+        tier_url = catalog.get('tiers', {}).get(str(row.get('tier')))
+        if row.get('tier') and tier_url:
+            icon_urls[f"tier:{row['tier']}"] = tier_url
     loaded = await asyncio.gather(*(icon_img(url, 68) for url in icon_urls.values()))
     icons = dict(zip(icon_urls, loaded))
     tier_id = (((mmr or {}).get('current') or {}).get('tier') or {}).get('id')
-    rank_icon = await icon_img(catalog.get('tiers', {}).get(str(tier_id)), 84)
+    rank_icon = await icon_img(catalog.get('tiers', {}).get(str(tier_id)), 68)
     loop = asyncio.get_running_loop()
     image = await loop.run_in_executor(None, render_player_history, name, tag, mode_value, rows, icons, mmr, rank_icon)
     await interaction.followup.send(file=discord.File(image, filename='player-history.png'))
