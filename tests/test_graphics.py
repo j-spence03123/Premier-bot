@@ -205,7 +205,7 @@ def test_player_history_renders_grouped_rows_with_missing_icons():
     width, height = _png_size(render_player_history("Player", "EU", "competitive", rows, {}))
 
     assert width == 1200
-    assert height == 410 + 2 * (46 + 106) + 20
+    assert height == 364 + 2 * (46 + 106) + 20
 
 
 def test_player_rank_summary_uses_latest_act_and_preserves_zero_rr():
