@@ -188,3 +188,8 @@ def test_recap_mentions_use_discord_display_names_and_match_whole_names():
     )
     assert text == "@Server\u00a0Nick dropped a 4K. @Other set it up. Rioter watched."
     assert mentions.findall(text) == ["@Server\u00a0Nick", "@Other"]
+
+
+def test_play_recap_calls_a_tied_score_a_draw():
+    assert "draw" in _play_recap("Lotus", False, 14, 14, [], [], "38 min")
+    assert "drew 14-14" in _play_recap("Lotus", False, 14, 14, [], [], "38 min", tone="kind")

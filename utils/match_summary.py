@@ -6,7 +6,8 @@ def _play_recap(map_name, won, our_score, their_score, tracked, all_teammates, d
     tone = normalize_tone(tone)
     if tone != "no_filter":
         return _toned_recap(map_name, won, our_score, their_score, all_teammates, duration, tone)
-    result = "snatched the win" if won else "took the L"
+    drew = not won and our_score == their_score
+    result = "snatched the win" if won else "settled for a draw" if drew else "took the L"
     subject = "Your team" if registered_only else "Your queue"
     recap = f"{subject} {result} on {map_name} after {duration} of competitive Valorant, {our_score}-{their_score}."
     if not all_teammates:
@@ -118,7 +119,7 @@ def _round_highlights(detail, teammates, weakest):
 
 
 def _toned_recap(map_name, won, our_score, their_score, players, duration, tone):
-    result = "won" if won else "lost"
+    result = "won" if won else "drew" if our_score == their_score else "lost"
     text = f"Your team {result} {our_score}-{their_score} on {map_name} after {duration}."
     ranked = sorted(players, key=lambda player: (player.get("stats") or {}).get("score", 0), reverse=True)
     if not ranked:

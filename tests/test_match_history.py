@@ -1,7 +1,7 @@
 import pytest
 
 from services.match_history import MatchHistoryService
-from services.matchfeed import format_match_notification, group_registered_players
+from services.matchfeed import format_match_notification, group_registered_players, match_result_word
 
 
 @pytest.mark.asyncio
@@ -91,3 +91,10 @@ def test_match_notification_mentions_registered_users_once():
     assert format_match_notification(
         ["101", "202", "101"], "won", "13-8", "Ascent"
     ) == "<@101> <@202> won 13-8 on Ascent!"
+
+
+def test_match_result_word_reports_draws():
+    assert match_result_word({"won": True, "rounds": {"won": 13, "lost": 8}}) == "won"
+    assert match_result_word({"won": False, "rounds": {"won": 8, "lost": 13}}) == "lost"
+    assert match_result_word({"won": False, "rounds": {"won": 14, "lost": 14}}) == "drew"
+    assert format_match_notification([1], "drew", "14-14", "Lotus") == "<@1> drew 14-14 on Lotus!"

@@ -14,7 +14,8 @@ from services.account_registry import iter_linked_accounts
 from services.ai_recap import recap_facts
 from services.json_store import JsonStoreError
 from services.match_history import cached_match_detail
-from services.matchfeed import format_match_notification, group_registered_players, next_matchfeed_counts
+from services.matchfeed import (format_match_notification, group_registered_players, match_result_word,
+                                next_matchfeed_counts)
 from services.matchfeed_context import matchfeed_recap_context
 from services.session_recap import post_session_recaps, session_match
 from services.squad_lore import prepare_squad_context, remember_squad_callback
@@ -318,7 +319,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                         team_record = team_records.get(team_id, {})
                         rounds = team_record.get("rounds") or {}
                         score = f"{rounds.get('won', 0)}-{rounds.get('lost', 0)}"
-                        result_word = "won" if team_record.get("won") else "lost"
+                        result_word = match_result_word(team_record)
                         all_team_players = [p for p in detail.get("players", []) if str(p.get("team_id")) == team_id]
                         registered_players = []
                         squad_members = {}

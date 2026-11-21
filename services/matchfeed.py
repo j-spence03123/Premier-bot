@@ -79,6 +79,16 @@ def group_registered_players(players, linked_accounts):
     return groups
 
 
+def match_result_word(team_record):
+    """Return "won", "drew" or "lost" for a team's record from match detail."""
+    if team_record.get("won"):
+        return "won"
+    rounds = team_record.get("rounds") or {}
+    if "won" in rounds and rounds.get("won") == rounds.get("lost"):
+        return "drew"
+    return "lost"
+
+
 def format_match_notification(user_ids, result_word, score, map_name):
     """Format a matchfeed notification while keeping mentions explicit."""
     mentions = " ".join(f"<@{user_id}>" for user_id in dict.fromkeys(user_ids))
