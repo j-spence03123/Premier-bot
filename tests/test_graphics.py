@@ -101,7 +101,21 @@ def test_operator_needs_enough_operator_kills():
     assert not any("OPERATOR" in player_tags for player_tags in tags.values())
 
 
-def test_eco_fraud_counts_kills_with_a_much_cheaper_loadout():
+def test_eco_fraud_counts_kills_against_a_much_cheaper_loadout():
+    players = [_tag_player(i) for i in range(5)]
+    enemies = [_tag_player(i, team="Blue") for i in range(5)]
+    rounds = [{"id": r, "stats": [
+        {"player": {"puuid": "Red-4"}, "economy": {"loadout_value": 4700}},
+        {"player": {"puuid": f"Blue-{r}"}, "economy": {"loadout_value": 800}},
+    ]} for r in range(3)]
+    kills = [_kill(r, "Red-4", f"Blue-{r}") for r in range(3)]
+
+    tags = _tags_for(players, enemies, kills, rounds)
+
+    assert "ECO FRAUD" in tags["Red-4"]
+
+
+def test_eco_fraud_ignores_kills_made_on_a_cheap_buy():
     players = [_tag_player(i) for i in range(5)]
     enemies = [_tag_player(i, team="Blue") for i in range(5)]
     rounds = [{"id": r, "stats": [
@@ -112,7 +126,7 @@ def test_eco_fraud_counts_kills_with_a_much_cheaper_loadout():
 
     tags = _tags_for(players, enemies, kills, rounds)
 
-    assert "ECO FRAUD" in tags["Red-4"]
+    assert "ECO FRAUD" not in tags["Red-4"]
 
 
 def test_team_killer_prefers_actual_team_kills_over_friendly_fire():

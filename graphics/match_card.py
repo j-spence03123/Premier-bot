@@ -14,7 +14,7 @@ from utils.match_summary import _clutch_wins, _deaths_by_round, _play_headline, 
 SHARED_TAGS = {"ACE", "CLUTCH", "VICTIM"}
 OPERATOR_MIN_KILLS = 6
 ECO_LOADOUT_RATIO = 0.5
-ECO_MIN_ENEMY_LOADOUT = 2500
+ECO_MIN_KILLER_LOADOUT = 2500
 PASSENGER_SCORE_RATIO = 0.8
 
 
@@ -90,8 +90,9 @@ def _kill_events(detail):
             operator[killer] = operator.get(killer, 0) + 1
         values = loadouts.get(event.get("round", 0) or 0, {})
         mine, theirs = values.get(killer), values.get(victim)
-        if mine is not None and theirs is not None and theirs >= ECO_MIN_ENEMY_LOADOUT \
-                and mine <= theirs * ECO_LOADOUT_RATIO:
+        # Eco kill: the killer is on a full buy and the victim is on a much cheaper loadout.
+        if mine is not None and theirs is not None and mine >= ECO_MIN_KILLER_LOADOUT \
+                and theirs <= mine * ECO_LOADOUT_RATIO:
             eco[killer] = eco.get(killer, 0) + 1
     return operator, eco, team_kills
 
