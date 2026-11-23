@@ -34,26 +34,30 @@ WHITE = (240, 244, 248)
 # Tag chip styles: (box colour, text colour[, box opacity]). Each tag gets its own hue so
 # chips are recognisable at a glance; ACE and TEAM KILLER use a solid box to stand out.
 PLAY_TAG_STYLES = {
-    "MVP": ((120, 90, 20), (255, 210, 80)),             # gold
+    # Gold: big moments
+    "MVP": ((104, 87, 39), (238, 214, 139)),            # gold
     "ACE": ((255, 196, 60), (40, 26, 0), 235),          # solid gold
-    "QUAD": ((110, 104, 20), (245, 240, 110)),          # lemon
-    "ECO FRAUD": ((70, 105, 15), (196, 245, 90)),       # lime
-    "SURVIVOR": ((25, 105, 50), (120, 235, 145)),       # green
-    "ASSIST KING": ((15, 100, 90), (110, 240, 215)),    # teal
-    "OPERATOR": ((15, 85, 115), (110, 220, 255)),       # cyan
-    "ENTRY": ((30, 60, 140), (140, 175, 255)),          # blue
-    "PLANTER": ((65, 45, 150), (185, 165, 255)),        # indigo
-    "DINK MACHINE": ((105, 40, 140), (225, 160, 255)),  # violet
-    "CLUTCH": ((140, 30, 120), (255, 130, 230)),        # magenta
-    "BAITED": ((135, 35, 75), (255, 140, 180)),         # rose
-    "DAMAGE DEALER": ((145, 60, 15), (255, 160, 90)),   # orange
-    "LVP": ((130, 25, 25), (255, 110, 110)),            # red
+    "KNIFE": ((255, 228, 140), (45, 32, 0), 235),       # solid pale gold
+    "QUAD": ((104, 98, 39), (238, 230, 139)),           # yellow-gold
+    "CLUTCH": ((104, 77, 39), (238, 197, 139)),         # amber
+    # Green and teal: good play
+    "ENTRY": ((39, 104, 71), (139, 238, 189)),          # green
+    "SURVIVOR": ((39, 104, 50), (139, 238, 156)),       # leaf green
+    "ASSIST KING": ((39, 104, 93), (139, 238, 222)),    # teal
+    "DAMAGE DEALER": ((66, 104, 39), (180, 238, 139)),  # lime
+    "DINK MACHINE": ((50, 104, 39), (156, 238, 139)),   # fresh green
+    "OPERATOR": ((39, 98, 104), (139, 230, 238)),       # cyan
+    "PLANTER": ((50, 93, 79), (156, 222, 200)),         # sage
+    # Purple: cheeky
+    "ECO FRAUD": ((77, 39, 104), (197, 139, 238)),      # purple
+    "EXIT FARMER": ((55, 39, 104), (164, 139, 238)),    # indigo
+    "BODY SHOOTER": ((98, 39, 104), (230, 139, 238)),   # orchid
+    "PASSENGER": ((56, 56, 86), (165, 165, 212)),       # dusty lavender
+    # Red: roasts
+    "BAITED": ((104, 39, 55), (238, 139, 164)),         # rose
+    "LVP": ((104, 39, 39), (238, 139, 139)),            # red
+    "VICTIM": ((125, 16, 36), (255, 196, 204), 235),    # solid crimson
     "TEAM KILLER": ((200, 30, 30), (255, 255, 255), 235),  # solid red
-    "BODY SHOOTER": ((110, 60, 25), (225, 150, 85)),    # copper
-    "PASSENGER": ((100, 92, 70), (235, 220, 180)),      # sand
-    "VICTIM": ((70, 72, 80), (205, 208, 218)),          # grey
-    "KNIFE": ((215, 222, 232), (24, 26, 32), 235),      # solid steel
-    "EXIT FARMER": ((55, 65, 100), (165, 182, 225)),    # slate
 }
 
 
