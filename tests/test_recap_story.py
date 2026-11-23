@@ -225,3 +225,17 @@ def test_half_split_collapse_becomes_a_story_angle():
     angles = pick_story_angles({"rounds": {"won": 13, "lost": 8}}, players)
     assert angles[0] == "Player went 16/6 in the first half, then 4/8 in the second"
 
+
+
+def test_validator_rejects_teammates_called_by_their_agent():
+    packet = "RESULT: Defeat 8-13 on Abyss\nFEATURED:\n- Player2 (Chamber): 7/18/7 (0.39 KD), 187 ACS"
+    padding = " Nothing else here carries a figure at all, which is exactly the point of this padding." * 7
+    agents = {"Player2": "Chamber", "Player": "Fade"}
+    by_agent = {"headline": "chamber vanished", "body": "Chamber went 7/18/7 in an 8-13 loss." + padding}
+    problems = validate_recap(by_agent, packet, names={"Player", "Player2"}, agents=agents)[1]
+    assert "called Player2 by their agent (Chamber); use the player's name" in problems
+    assert "no player was named; call players by their names from FEATURED, not their agents" in problems
+
+    by_name = {"headline": "player2 vanished", "body": "Player2's Chamber went 7/18/7 in an 8-13 loss, and the enemy "
+               "Fade had a great time." + padding}
+    assert validate_recap(by_name, packet, names={"Player", "Player2"}, agents=agents)[1] == []

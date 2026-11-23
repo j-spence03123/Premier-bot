@@ -361,6 +361,9 @@ retell the game. It must read like a story with a turn in it, not a scoreboard.
 - Use the LORE label at most once, and only if LORE is provided.
 - Write player names exactly as given, without "@". Refer to players by name, never with he/she/him/her;
   "they" is fine.
+- Always call squad players by their name from FEATURED or ALSO PLAYED, never by their agent alone: write
+  "Player2's Chamber" or "Player2 on Chamber", never just "Chamber". A bare agent name is only for enemies,
+  written as "the enemy <agent>".
 - {result_rule}
 - Finish with a punchline image or a verdict, not a summary.
 
@@ -435,6 +438,12 @@ async def generate_recap(session, api_key, model, detail, teammates, representat
     facts = recap_facts(detail, teammates, representative, registered_only=registered_only)
     packet, _ = build_facts_packet(detail, teammates, representative, facts, recap_context, squad_context)
     names = {p["name"] for p in teammates if p.get("name")}
+    agents = {}
+    for player in teammates:
+        agent = player.get("agent")
+        agent = agent.get("name") if isinstance(agent, dict) else agent
+        if player.get("name") and isinstance(agent, str) and agent.strip():
+            agents[player["name"]] = agent.strip()
     others = ({p["name"] for p in detail.get("players") or [] if len(p.get("name") or "") >= 3} - names
               if registered_only else set())
     callback = (squad_context or {}).get("callback")
@@ -463,7 +472,8 @@ async def generate_recap(session, api_key, model, detail, teammates, representat
                     output = json.loads(content)
                 except ValueError:
                     output = None
-                recap, problems = validate_recap(output, packet, names=names, other_names=others, labels=labels)
+                recap, problems = validate_recap(output, packet, names=names, other_names=others, labels=labels,
+                                                 agents=agents)
                 if recap:
                     return recap
             else:

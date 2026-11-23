@@ -484,7 +484,7 @@ def numbers_in(text, exempt=()):
     return found
 
 
-def validate_recap(output, packet, *, names=(), other_names=(), labels=()):
+def validate_recap(output, packet, *, names=(), other_names=(), labels=(), agents=None):
     """Return ``(recap, problems)``. ``recap`` is None when any check fails."""
     if not isinstance(output, dict):
         return None, ["the answer was not a JSON object"]
@@ -513,6 +513,16 @@ def validate_recap(output, packet, *, names=(), other_names=(), labels=()):
         problems.append("mentioned players not in FEATURED or ALSO PLAYED")
     story = f"{headline} {body}"
     mentioned = [n for n in names if re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", story, re.IGNORECASE)]
+    if names and not mentioned:
+        problems.append("no player was named; call players by their names from FEATURED, not their agents")
+    for name, agent in (agents or {}).items():
+        if agent.casefold() == name.casefold():
+            continue
+        # "the enemy Chamber" / "their Chamber" is how enemies are named; anything else is a teammate's agent.
+        bare = re.findall(r"(?<!enemy )(?<!their )(?<!\w)" + re.escape(agent) + r"(?!\w)", story, re.IGNORECASE)
+        named = re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", story, re.IGNORECASE)
+        if bare and not named:
+            problems.append(f"called {name} by their agent ({agent}); use the player's name")
     if len(mentioned) > MAX_FEATURED:
         problems.append(f"named {len(mentioned)} players; tell one story about at most {MAX_FEATURED}, "
                         "not a player-by-player rundown")
