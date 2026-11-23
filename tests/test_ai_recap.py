@@ -77,7 +77,7 @@ async def test_groq_recap_sends_facts_packet_and_returns_validated_text():
     payload = request["json"]
     assert payload["model"] == "openai/gpt-oss-120b"
     assert payload["reasoning_effort"] == "low"
-    assert payload["temperature"] == 0.95
+    assert payload["temperature"] == 0.85
     assert payload["response_format"] == {"type": "json_object"}
     packet = payload["messages"][-1]["content"]
     assert packet.startswith("FACTS:") and "Ascent" in packet and "- Player:" in packet
