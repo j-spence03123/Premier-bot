@@ -4,7 +4,7 @@ import re
 
 from PIL import Image, ImageDraw, ImageOps
 
-from .assets import PLAY_TAG_STYLES, chip_width, draw_soft_box, match_font, wrap_image_text
+from .assets import PLAY_TAG_STYLES, chip_width, draw_soft_box, match_font, readable_font, wrap_image_text
 from utils.formatting import parse_time, uk_time
 from utils.match_summary import _clutch_rounds, _deaths_by_round, _play_headline, _play_recap
 
@@ -364,7 +364,7 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
         recap += " " + fallback_context
     recap, mention_pattern = _recap_mentions(recap, focus, discord_names)
     headline = ((ai_recap or {}).get("headline") or _play_headline(focus, our_score, their_score, registered_only, tone)).upper()
-    recap_font = match_font(23)
+    recap_font = readable_font(recap, 23)
     measure_draw = ImageDraw.Draw(Image.new("RGB", (width, 1)))
     columns, side_pad, column_gap = 2, 24, 18
     recap_lines = wrap_image_text(measure_draw, recap, recap_font, width - 2 * side_pad, 20,
@@ -423,10 +423,10 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     draw.text(((badge_box[0] + badge_box[2]) // 2, (badge_box[1] + badge_box[3]) // 2), badge,
               font=badge_font, fill=(255, 250, 250), anchor="mm")
     headline_size = 32
-    headline_font = match_font(headline_size, True)
+    headline_font = readable_font(headline, headline_size, True)
     while headline_size > 22 and draw.textlength(headline, font=headline_font) > width - 64:
         headline_size -= 1
-        headline_font = match_font(headline_size, True)
+        headline_font = readable_font(headline, headline_size, True)
     if draw.textlength(headline, font=headline_font) > width - 64:
         while headline and draw.textlength(headline + "...", font=headline_font) > width - 64:
             headline = headline[:-1]
@@ -462,11 +462,11 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
             image.paste(icon, (fitted_x, fitted_y), icon)
         player_name = str(p.get("name", "?"))
         player_name_size = 25
-        player_name_font = match_font(player_name_size, True)
+        player_name_font = readable_font(player_name, player_name_size, True)
         player_name_x = x + 112
         while player_name_size > 18 and draw.textlength(player_name, font=player_name_font) > right - player_name_x - 20:
             player_name_size -= 1
-            player_name_font = match_font(player_name_size, True)
+            player_name_font = readable_font(player_name, player_name_size, True)
         player_blue = (164, 194, 245)
         draw.text((player_name_x, y + 18), player_name, font=player_name_font, fill=player_blue, anchor="lt")
         tx, tag_row = player_name_x, 0

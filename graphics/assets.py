@@ -91,6 +91,21 @@ def match_font(size, bold=False, serif=False):
         return font(size, bold=bold, serif=serif)
 
 
+def supports(image_font, text):
+    """True when ``image_font`` has a glyph for every visible character in ``text``."""
+    try:
+        missing = bytes(image_font.getmask("\ue000"))
+    except Exception:
+        return True
+    return all(char.isspace() or bytes(image_font.getmask(char)) != missing for char in set(text))
+
+
+def readable_font(text, size, bold=False):
+    """The bundled card font when it can draw ``text``, otherwise the best system font."""
+    bundled = match_font(size, bold)
+    return bundled if supports(bundled, text) else font(size, bold=bold)
+
+
 def draw_soft_box(image, box, fill, opacity=224, radius=4, *, outline=None):
     """Draw a lightly transparent, antialiased chip on an existing RGB image."""
     left, top, right, bottom = box

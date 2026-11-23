@@ -444,3 +444,15 @@ def test_martyr_counts_first_deaths_in_rounds_the_team_won():
 
     assert "MARTYR" in tags["Red-2"]
     assert "MARTYR" not in tags["Red-4"]
+
+
+def test_bundled_card_fonts_load_and_fall_back_for_missing_glyphs():
+    from graphics.assets import MATCH_FONT_DIR, match_font, readable_font, supports
+
+    for name in ("Roboto-Regular.ttf", "Roboto-Bold.ttf", "Lora-Regular.ttf", "Lora-Bold.ttf"):
+        assert (MATCH_FONT_DIR / name).exists()
+    assert match_font(20).getname()[0] == "Roboto"
+    assert supports(match_font(20), "Kairo · Жора – 13–9")
+    assert not supports(match_font(20), "名前")
+    assert readable_font("Kairo", 20).getname()[0] == "Roboto"
+    assert readable_font("名前", 20).getname()[0] != "Roboto"
