@@ -239,3 +239,9 @@ def test_validator_rejects_teammates_called_by_their_agent():
     by_name = {"headline": "player2 vanished", "body": "Player2's Chamber went 7/18/7 in an 8-13 loss, and the enemy "
                "Fade had a great time." + padding}
     assert validate_recap(by_name, packet, names={"Player", "Player2"}, agents=agents)[1] == []
+
+
+def test_top_enemy_is_left_out_unless_they_really_went_off():
+    detail = _grudge_match()
+    detail["players"][-5]["stats"] = {"kills": 22, "deaths": 15, "assists": 4, "score": 280 * 18}
+    assert "TOP_ENEMY" not in packet_for(detail)[0]  # 22 kills in a game the squad lost: not worth a mention

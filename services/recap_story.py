@@ -124,6 +124,7 @@ def player_round_stats(detail, teammates, team_id):
 
 GRUDGE_MINIMUM = 4
 TOP_ENEMY_KILLS = 20
+TOP_ENEMY_STAR_KILLS = 25
 
 
 def _agent_name(player):
@@ -351,6 +352,10 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
     rounds_total = won + lost if outcome else None
     stats = player_round_stats(detail, teammates, representative.get("team_id"))
     grudges, top_enemy = enemy_context(detail, teammates, representative.get("team_id"), rounds_total)
+    # Only worth a mention when the enemy really went off, or went off and still lost.
+    if top_enemy and not (top_enemy["kills"] >= TOP_ENEMY_STAR_KILLS
+                          or (outcome == "win" and top_enemy["kills"] >= TOP_ENEMY_KILLS)):
+        top_enemy = None
     plays = _top_multikills(facts)
     players = {}
     for source, fact in zip(teammates, facts.get("teammates") or []):

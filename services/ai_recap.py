@@ -347,14 +347,15 @@ retell the game. It must read like a story with a turn in it, not a scoreboard.
 - Build it on STORY_ANGLE. It can follow one player, or contrast two (one carried while the other vanished,
   one built the lead and the other cashed it). Talk about the FEATURED players only; ALSO PLAYED players get a
   passing mention at most. Never go player by player.
-- Vary the opening. Don't always start with a player's name: open on a round, a half, the map, the scoreline
-  or the enemy if that hits harder.
+- Vary the opening. Don't always start with a player's name: open on a round, a half, the map or the
+  scoreline if that hits harder.
 - Use numbers as evidence, not as a list: the first-half vs second-half split, a round number and weapon for
   a multikill, a clutch record, an ADR. Each number should set up or land a joke.
 - Explain what the numbers meant for the game: who built the lead, where it fell apart, who closed it.
 - Good material when it's in FACTS: a player's split between halves, a grudge against one enemy (name enemies
   only as "the enemy <agent>"), TOP_ENEMY going off, RANK stakes,
   how many games the squad has played TOGETHER. Use up to two of these on top of STORY_ANGLE; never list them.
+- The recap is about the squad. Mention an enemy at most once, and only when it's part of the story.
 - Every joke must make literal sense for what happened, ideally using VALORANT itself (the agent's kit, the
   map, eco rounds, the Operator, the respawn screen). If a line sounds clever but you couldn't say what it
   means, cut it. Don't reuse the examples' jokes or phrases.
@@ -407,11 +408,10 @@ TOP_ENEMY: their Yoru went 30/18/4 (1.67 KD), 333 ACS""",
       "body": "Abyss opened ugly: down 5-7 at the break with Player at 2/9, a Chamber whose only reliable "
               "trademark was the respawn timer. Then the second half flipped into an 8-4 run, and the switch had a "
               "name. Player came back 13/9, dropped a 3K with a Classic in round 13 and did it again in round 22 "
-              "with the Operator, which is the rifle money finally paying rent. It got personal too: Player killed "
-              "the enemy Yoru 4 times and got sent back 5 times by the same Yoru, a grudge match neither side will "
-              "admit to. Player2 quietly had the stranger line, 18/18/17 with 8 kills on one very unlucky Neon, "
-              "but went 0/3 in clutches. And that Yoru went 30/18 with 333 ACS and still lost 13-11, which is "
-              "the most VALORANT sentence possible."}),
+              "with the Operator, which is the rifle money finally paying rent. Player2 quietly had the stranger "
+              "line, 18/18/17 with 17 assists, but went 0/3 in clutches, so the bragging rights stay locked in the "
+              "group chat. And the enemy Yoru went 30/18 with 333 ACS and still lost 13-11, which is the most "
+              "VALORANT sentence possible."}),
 )
 
 
