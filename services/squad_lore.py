@@ -104,6 +104,36 @@ def _record_lineup(lineups, members, match_id, started, outcome, map_name):
     return None
 
 
+def _record_rivalries(rivalries, members, facts):
+    """Count, for every pair of members in this match, who finished with the better K/D.
+
+    Keyed by Discord member id so renamed Riot accounts keep their record. Returns the
+    standings for this match's pairs, with names as they appear in this match.
+    """
+    kd = {}
+    for teammate in facts.get("teammates") or []:
+        kills, deaths = teammate.get("kills"), teammate.get("deaths")
+        if type(kills) is int and type(deaths) is int:
+            kd[teammate.get("name")] = kills / max(deaths, 1)
+    names = list(members.values())
+    present = sorted((member_id, name) for member_id, name in members.items()
+                     if name in kd and names.count(name) == 1)
+    standings = []
+    for index, (id_a, name_a) in enumerate(present):
+        for id_b, name_b in present[index + 1:]:
+            key = f"{id_a}|{id_b}"
+            wins_a, wins_b, games = rivalries.get(key, [0, 0, 0])
+            winner = None
+            if kd[name_a] > kd[name_b]:
+                wins_a, winner = wins_a + 1, name_a
+            elif kd[name_b] > kd[name_a]:
+                wins_b, winner = wins_b + 1, name_b
+            rivalries[key] = [wins_a, wins_b, games + 1]
+            standings.append({"players": [name_a, name_b], "record": [wins_a, wins_b], "games": games + 1,
+                              "this_match": winner})
+    return standings
+
+
 def prepare_squad_context(feed, members, match_id, started, facts):
     """Calculate the state for a posted card without mutating the persisted feed."""
     previous = (feed.get("match_counts") or {}).get("squad_memory") or {}
@@ -113,12 +143,16 @@ def prepare_squad_context(feed, members, match_id, started, facts):
         "last_callback": previous.get("last_callback"),
         "used": {key: at for key, at in (previous.get("used") or {}).items() if key in entries},
         "lineups": dict(previous.get("lineups") or {}),
+        "rivalries": {key: list(value) for key, value in (previous.get("rivalries") or {}).items()},
     }
     outcome = _outcome(facts)
     together = {}
     if len(members) >= 2 and outcome:
         history = _record_lineup(memory["lineups"], members, match_id, started, outcome, facts.get("map"))
         together = {"games_together": memory["lineups"][json.dumps(sorted(members))]["games"]}
+        rivalries = _record_rivalries(memory["rivalries"], members, facts)
+        if rivalries:
+            together["rivalries"] = rivalries
         if history:
             return memory, {"history": history, **together}, None
     choice = _pick_entry(entries, memory, members, outcome, facts)

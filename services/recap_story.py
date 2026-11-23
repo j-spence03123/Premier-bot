@@ -122,6 +122,78 @@ def player_round_stats(detail, teammates, team_id):
     return stats
 
 
+GRUDGE_MINIMUM = 4
+TOP_ENEMY_KILLS = 20
+RIVALRY_MINIMUM = 10
+
+
+def _agent_name(player):
+    agent = player.get("agent")
+    name = agent.get("name") if isinstance(agent, dict) else agent
+    return name.strip() if isinstance(name, str) and name.strip() else None
+
+
+def enemy_context(detail, teammates, team_id, rounds_total):
+    """Per-teammate grudges against single enemies, plus the enemy who dropped the most kills.
+
+    Enemies are named by agent ("the enemy Yoru"), never by their Riot name.
+    """
+    side = str(team_id or "").casefold()
+    enemies = {p.get("puuid"): p for p in detail.get("players") or []
+               if p.get("puuid") and p.get("team_id") and str(p["team_id"]).casefold() != side}
+    agents = {pid: _agent_name(player) for pid, player in enemies.items()}
+    if len([a for a in agents.values() if a]) != len(set(a for a in agents.values() if a)):
+        agents = {}  # two enemies on one agent would make "the enemy X" ambiguous
+    ids = {p.get("puuid") for p in teammates if p.get("puuid")}
+    kills_on = {pid: Counter() for pid in ids}
+    deaths_to = {pid: Counter() for pid in ids}
+    for event in detail.get("kills") or []:
+        killer = (event.get("killer") or {}).get("puuid")
+        victim = (event.get("victim") or {}).get("puuid")
+        if killer in ids and victim in enemies:
+            kills_on[killer][victim] += 1
+        elif victim in ids and killer in enemies:
+            deaths_to[victim][killer] += 1
+    grudges = {}
+    for pid in ids:
+        grudge = {}
+        if kills_on[pid]:
+            enemy, count = kills_on[pid].most_common(1)[0]
+            if count >= GRUDGE_MINIMUM and agents.get(enemy):
+                grudge["victim"] = (agents[enemy], count)
+        if deaths_to[pid]:
+            enemy, count = deaths_to[pid].most_common(1)[0]
+            if count >= GRUDGE_MINIMUM and agents.get(enemy):
+                grudge["nemesis"] = (agents[enemy], count)
+        if grudge:
+            grudges[pid] = grudge
+    top = None
+    best = max(enemies.values(), key=lambda p: (p.get("stats") or {}).get("kills", 0), default=None)
+    if best and agents.get(best.get("puuid")):
+        stats = best.get("stats") or {}
+        kills, deaths, assists = stats.get("kills"), stats.get("deaths"), stats.get("assists")
+        team_best = max(((p.get("stats") or {}).get("kills", 0) for p in teammates), default=0)
+        if type(kills) is int and type(deaths) is int and (kills >= TOP_ENEMY_KILLS or kills > team_best):
+            top = {"agent": agents[best["puuid"]], "kills": kills, "deaths": deaths,
+                   "assists": assists if type(assists) is int else None, "kd": _kd(kills, deaths)}
+            score = stats.get("score")
+            if type(score) is int and rounds_total:
+                top["acs"] = round(score / rounds_total)
+    return grudges, top
+
+
+def _grudge_text(grudge):
+    victim, nemesis = grudge.get("victim"), grudge.get("nemesis")
+    if victim and nemesis and victim[0] == nemesis[0]:
+        return f"killed the enemy {victim[0]} {victim[1]} times and died to them {nemesis[1]} times"
+    parts = []
+    if victim:
+        parts.append(f"killed the enemy {victim[0]} {victim[1]} times")
+    if nemesis:
+        parts.append(f"died to the enemy {nemesis[0]} {nemesis[1]} times")
+    return ", ".join(parts)
+
+
 def _half_split(stat, rounds_total):
     if not rounds_total or rounds_total <= 12:
         return None
@@ -143,7 +215,7 @@ def _top_multikills(facts):
     return plays
 
 
-def pick_story_angles(facts, players, recap_context=None, squad_context=None, limit=2):
+def pick_story_angles(facts, players, recap_context=None, squad_context=None, limit=2, top_enemy=None):
     """Rank the available story angles and return the strongest ones as plain sentences.
 
     ``players`` maps each teammate's name to the derived line data built in ``build_facts_packet``.
@@ -201,6 +273,20 @@ def pick_story_angles(facts, players, recap_context=None, squad_context=None, li
         if kd is not None and float(kd) >= 1.5 and acs >= 260:
             candidates.append((55 if outcome == "win" else 50,
                                f"{name} carried with {player['kda_text']} and {acs} ACS"))
+        if player.get("halves"):
+            (k1, d1), (k2, d2) = player["halves"]
+            if k1 + d1 >= 5 and k2 + d2 >= 5:
+                kd1, kd2 = k1 / max(d1, 1), k2 / max(d2, 1)
+                if kd1 >= 1.5 and kd2 <= 0.6:
+                    candidates.append((82, f"{name} went {k1}/{d1} in the first half, then {k2}/{d2} in the second"))
+                elif kd1 <= 0.6 and kd2 >= 1.5:
+                    candidates.append((80, f"{name} went {k1}/{d1} in the first half, "
+                                           f"then turned it around with {k2}/{d2} in the second"))
+        grudge = player.get("grudge") or {}
+        if grudge.get("victim") and grudge["victim"][1] >= 6:
+            candidates.append((57, f"{name} killed the enemy {grudge['victim'][0]} {grudge['victim'][1]} times"))
+        elif grudge.get("nemesis") and grudge["nemesis"][1] >= 6:
+            candidates.append((57, f"the enemy {grudge['nemesis'][0]} killed {name} {grudge['nemesis'][1]} times"))
         clutch_won, clutch_tries = player.get("clutches") or (0, 0)
         if clutch_tries >= 3 and clutch_won == 0:
             candidates.append((58, f"{name} went 0/{clutch_tries} in clutches"))
@@ -219,7 +305,17 @@ def pick_story_angles(facts, players, recap_context=None, squad_context=None, li
         elif h2l == 0 and h2w >= 3 and outcome == "win":
             candidates.append((60, f"the team dropped 0 rounds in the second half ({h2w}-{h2l})"))
 
+    if top_enemy and top_enemy["kills"] >= 25 and outcome in ("win", "loss"):
+        line = f"{top_enemy['kills']}/{top_enemy['deaths']}"
+        if outcome == "win":
+            candidates.append((66, f"the enemy {top_enemy['agent']} went {line} and still lost"))
+        else:
+            candidates.append((63, f"the enemy {top_enemy['agent']} went {line} and ran the lobby"))
+
     squad_context = squad_context or {}
+    rivalry = _rivalry(squad_context, players)
+    if rivalry:
+        candidates.append((56, _rivalry_text(rivalry)))
     if squad_context.get("history"):
         candidates.append((64, squad_context["history"].rstrip(".")))
     callback = squad_context.get("callback")
@@ -232,6 +328,25 @@ def pick_story_angles(facts, players, recap_context=None, squad_context=None, li
             candidates.append((10, f"{name} led the squad with {top['acs']} ACS in a {won}-{lost} {outcome}"))
     ranked = sorted(candidates, key=lambda item: -item[0])
     return list(dict.fromkeys(text for _, text in ranked))[:limit]
+
+
+def _rivalry(squad_context, players):
+    """The longest-running KD rivalry between two players in this match, if there is one."""
+    rows = [row for row in squad_context.get("rivalries") or []
+            if row.get("games", 0) >= RIVALRY_MINIMUM and all(name in players for name in row["players"])]
+    return max(rows, key=lambda row: row["games"], default=None)
+
+
+def _rivalry_text(row):
+    (a, b), (wins_a, wins_b) = row["players"], row["record"]
+    if wins_a == wins_b:
+        standing = f"{a} and {b} are level at {wins_a}-{wins_b} in their KD rivalry across {row['games']} games"
+    else:
+        leader, trailer = (a, b) if wins_a > wins_b else (b, a)
+        standing = (f"{leader} leads {trailer} {max(wins_a, wins_b)}-{min(wins_a, wins_b)} in their KD rivalry "
+                    f"across {row['games']} games")
+    winner = row.get("this_match")
+    return standing + (f", and {winner} won this one" if winner else ", and this one was a tie")
 
 
 def featured_players(players, angles, limit=MAX_FEATURED):
@@ -258,6 +373,7 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
     outcome, won, lost = _outcome(facts)
     rounds_total = won + lost if outcome else None
     stats = player_round_stats(detail, teammates, representative.get("team_id"))
+    grudges, top_enemy = enemy_context(detail, teammates, representative.get("team_id"), rounds_total)
     plays = _top_multikills(facts)
     players = {}
     for source, fact in zip(teammates, facts.get("teammates") or []):
@@ -271,6 +387,8 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
         if kills is not None and deaths is not None:
             kda = f"{kills}/{deaths}/{assists}" if assists is not None else f"{kills}/{deaths}"
             info["kda_text"] = f"{kda} ({info['kd']} KD)" if info["kd"] else kda
+        if grudges.get(source.get("puuid")):
+            info["grudge"] = grudges[source.get("puuid")]
         if stat:
             info["first_bloods"] = stat["first_bloods"]
             if stat["clutches"][1]:
@@ -290,7 +408,7 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
                                                "kd": _kd(rest_k, rest_d)}
         players[name] = info
 
-    angles = pick_story_angles(facts, players, recap_context, squad_context)
+    angles = pick_story_angles(facts, players, recap_context, squad_context, top_enemy=top_enemy)
     featured = featured_players(players, angles)
     lines = []
     if outcome:
@@ -316,6 +434,8 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
             parts.append(info["kda_text"])
         if info.get("acs") is not None:
             parts.append(f"{info['acs']} ACS")
+        if info.get("adr") is not None:
+            parts.append(f"{info['adr']} ADR")
         fb = info.get("first_bloods", 0)
         if fb >= 3:
             parts.append(f"{fb} first bloods")
@@ -332,6 +452,8 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
         if info.get("best_weapon"):
             weapon, count = info["best_weapon"]
             parts.append(f"best weapon {weapon} ({count} kills)")
+        if info.get("grudge"):
+            parts.append(_grudge_text(info["grudge"]))
         if info.get("is_smurf"):
             parts.append("playing on a smurf account")
         agent = f" ({info['agent']})" if info.get("agent") else ""
@@ -340,13 +462,19 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
     if others:
         lines.append("ALSO PLAYED: " + ", ".join(
             f"{name} ({players[name]['agent']})" if players[name].get("agent") else name for name in others))
-    shown = [play for play in plays if play["player"] in featured][:3]
+    shown = [play for play in plays if play["player"] in featured][:4]
     if shown:
         lines.append("MULTIKILLS:")
         for play in shown:
             label = "ace" if play["ace"] else f"{play['kills']}K"
             gear = f" ({play['weapon']})" if play["weapon"] else ""
             lines.append(f"- {play['player']} {label} in round {play['round']}{gear}")
+    if top_enemy:
+        assists = f"/{top_enemy['assists']}" if top_enemy.get("assists") is not None else ""
+        kd = f" ({top_enemy['kd']} KD)" if top_enemy.get("kd") else ""
+        acs = f", {top_enemy['acs']} ACS" if top_enemy.get("acs") is not None else ""
+        lines.append(f"TOP_ENEMY: their {top_enemy['agent']} went "
+                     f"{top_enemy['kills']}/{top_enemy['deaths']}{assists}{kd}{acs}")
     for row in recap_context or []:
         name = row.get("player")
         if name not in featured:
@@ -360,6 +488,9 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
         who = f" -> {callback['player']}" if callback.get("player") else ""
         lines.append(f"LORE: \"{callback['label']}\" ({callback['kind']}){who}; "
                      f"evidence: {callback['match_evidence']}")
+    rivalry = _rivalry(squad_context, {name: players[name] for name in featured})
+    if rivalry:
+        lines.append(f"RIVALRY: {_rivalry_text(rivalry)}")
     if (squad_context.get("games_together") or 0) >= TOGETHER_MINIMUM:
         lines.append(f"TOGETHER: {squad_context['games_together']} games")
     return "\n".join(lines), players

@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from services.ai_recap import RECAP_EXAMPLES, recap_facts
@@ -109,14 +111,12 @@ def test_smurf_and_lore_angles_are_available():
                       'squad lore "Clutch Allergy" applies: The team recorded a loss']
 
 
-# The examples are the brief's original wording, which uses a few numbers its facts packet can't back up
-# ("24 HOURS", "the other 14 deaths", "game 41"). Pin exactly those so nothing else slips in.
-@pytest.mark.parametrize("index,expected", [(0, ["numbers not in FACTS: 24"]),
-                                            (1, ["numbers not in FACTS: 14, 41"])])
-def test_few_shot_examples_only_go_beyond_their_facts_where_the_original_did(index, expected):
+# The examples teach the model, so they must pass the same checks its answers do.
+@pytest.mark.parametrize("index", range(len(RECAP_EXAMPLES)))
+def test_few_shot_examples_pass_validation(index):
     packet, answer = RECAP_EXAMPLES[index]
-    names = {"Player", "Player2", "Player2"}
-    assert validate_recap(answer, packet, names=names, labels={"Clutch Allergy"})[1] == expected
+    assert validate_recap(answer, packet, names={"Player", "Player2", "Player3"})[1] == []
+    assert not re.search(r"\b(he|she|him|her|his|hers)\b", answer["body"], re.IGNORECASE)
 
 
 def test_numbers_include_spelled_out_values_from_three_up():
@@ -191,3 +191,44 @@ def test_validator_rejects_a_player_by_player_rundown():
         "named 4 players; tell one story about at most 3, not a player-by-player rundown"]
     story = dict(rundown, body="One carried while Two watched." + padding)
     assert validate_recap(story, packet, names=names)[1] == []
+
+
+def _grudge_match():
+    """Player kills the enemy Yoru 6 times; the enemy Neon kills Player2 5 times; Yoru drops 25 kills."""
+    enemies = [{**enemy, "agent": {"name": agent}, "stats": {"kills": 3, "deaths": 10, "assists": 1, "score": 2000}}
+               for enemy, agent in zip(ENEMIES, ["Yoru", "Neon", "Sova", "Omen", "Killjoy"])]
+    enemies[0]["stats"] = {"kills": 25, "deaths": 15, "assists": 4, "score": 300 * 18}
+    detail = haven_collapse()
+    detail["players"] = [PLAYER, PLAYER2, *RANDOS, *enemies]
+    detail["kills"] += [_kill(r, 30_000, PLAYER, enemies[0]) for r in range(12, 18)]
+    detail["kills"] += [_kill(r, 31_000, enemies[1], PLAYER2) for r in range(12, 17)]
+    return detail
+
+
+def test_packet_names_grudges_and_the_top_enemy_by_agent_only():
+    packet, _ = packet_for(_grudge_match())
+    assert "killed the enemy Yoru" in packet
+    assert "died to the enemy Neon 5 times" in packet
+    assert "TOP_ENEMY: their Yoru went 25/15/4 (1.67 KD), 300 ACS" in packet
+    assert "Enemy0" not in packet and "Enemy1" not in packet
+
+
+def test_grudges_are_dropped_when_two_enemies_share_an_agent():
+    detail = _grudge_match()
+    detail["players"][-1]["agent"] = {"name": "Yoru"}
+    packet, _ = packet_for(detail)
+    assert "the enemy" not in packet and "TOP_ENEMY" not in packet
+
+
+def test_half_split_collapse_becomes_a_story_angle():
+    players = {"Player": {"halves": ([16, 6], [4, 8]), "kd": "1.43"}}
+    angles = pick_story_angles({"rounds": {"won": 13, "lost": 8}}, players)
+    assert angles[0] == "Player went 16/6 in the first half, then 4/8 in the second"
+
+
+def test_rivalry_reaches_the_packet_once_it_has_enough_games():
+    rivalry = {"players": ["Player", "Player2"], "record": [9, 4], "games": 13, "this_match": "Player"}
+    packet, _ = packet_for(haven_collapse(), squad_context={"rivalries": [rivalry]})
+    assert "RIVALRY: Player leads Player2 9-4 in their KD rivalry across 13 games, and Player won this one" in packet
+    short = dict(rivalry, games=9)
+    assert "RIVALRY" not in packet_for(haven_collapse(), squad_context={"rivalries": [short]})[0]
