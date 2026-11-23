@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageOps
 
 from .assets import chip_width, draw_soft_box, encode_png, match_font
+from .round_strip import ROUND_STRIP_HEIGHT, draw_round_strip, round_results
 from utils.formatting import parse_time
 from utils.recent_scoreboard import build_scoreboard
 
@@ -22,7 +23,11 @@ def render_recent_scoreboard(detail, target, period, map_path, agent_icons, rank
     groups = [(team_id, sorted((r for r in rows if r["player"].get("team_id") == team_id),
                                key=lambda r: r["score"], reverse=True)) for team_id in ordered]
     groups = [(team_id, group) for team_id, group in groups if group]
-    height = hero + 76 + sum(48 + len(group) * row_h + 14 for _, group in groups) + 18
+    score = team.get("rounds") or {}
+    results = (round_results(detail, side, score["won"], score["lost"])
+               if type(score.get("won")) is int and type(score.get("lost")) is int else None)
+    strip_h = ROUND_STRIP_HEIGHT if results else 0
+    height = hero + strip_h + 76 + sum(48 + len(group) * row_h + 14 for _, group in groups) + 18
     image = Image.new("RGB", (width, height), (17, 17, 22))
     draw = ImageDraw.Draw(image)
     if map_path and Path(map_path).exists():
@@ -40,7 +45,6 @@ def render_recent_scoreboard(detail, target, period, map_path, agent_icons, rank
     draw.text((pad, 142), map_name.upper(), font=match_font(56, True), fill=(250, 250, 252), anchor="lm")
     draw.text((pad, 205), f"Competitive · {duration // 60000} min · {date}" if duration else f"Competitive · {date}",
               font=match_font(19), fill=(207, 205, 210), anchor="lm")
-    score = team.get("rounds") or {}
     won = team.get("won")
     if won is False and score.get("won") is not None and score.get("won") == score.get("lost"):
         won = None
@@ -51,12 +55,15 @@ def render_recent_scoreboard(detail, target, period, map_path, agent_icons, rank
     draw_soft_box(image, box, colour, opacity=238, radius=7)
     draw = ImageDraw.Draw(image)
     draw.text(((box[0] + box[2]) // 2, (box[1] + box[3]) // 2), label, font=chip_font, fill=(255, 250, 250), anchor="mm")
+    if results:
+        draw_round_strip(image, hero + 33, results, width, pad)
+        draw = ImageDraw.Draw(image)
     period_title = {"full": "FULL MATCH", "first": "FIRST HALF", "second": "SECOND HALF + OVERTIME"}[period]
-    draw.text((pad, hero + 36), f"SCOREBOARD  /  {period_title}", font=match_font(22, True),
+    draw.text((pad, hero + strip_h + 36), f"SCOREBOARD  /  {period_title}", font=match_font(22, True),
               fill=(240, 99, 106), anchor="lm")
     columns = [("ACS", 535), ("K", 620), ("D", 690), ("A", 760), ("+/−", 845),
                ("K/D", 940), ("ADR", 1040), ("HS%", 1135), ("FB", 1230), ("FD", 1320)]
-    y = hero + 76
+    y = hero + strip_h + 76
     for team_id, group in groups:
         ours = team_id == side
         draw.rectangle((pad, y, width - pad, y + 38), fill=(33, 72, 59) if ours else (75, 38, 46))

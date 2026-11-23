@@ -313,48 +313,6 @@ def _recap_mentions(text, players, discord_names):
     return text, re.compile(rf"({mentions})(?!\w)")
 
 
-ROUND_WIN = ((33, 88, 58), (160, 236, 190))
-ROUND_LOSS = ((104, 36, 44), (255, 168, 174))
-ROUND_STRIP_HEIGHT = 58
-
-
-def _round_results(detail, team_id, won, lost):
-    """Whether the squad won each round, in order, or None when rounds can't be matched to the score."""
-    rows = detail.get("rounds") or []
-    side = str(team_id or "").casefold()
-    if not side or not rows or len(rows) != won + lost:
-        return None
-    results = []
-    for _, row in sorted(enumerate(rows), key=lambda item: _round_number(item[1], item[0])):
-        winner = str(row.get("winning_team") or "").casefold()
-        if not winner:
-            return None
-        results.append(winner == side)
-    return results if sum(results) == won else None
-
-
-def _draw_round_strip(image, center_y, results, width, side_pad):
-    """One numbered block per round across the card, green for won and red for lost, split at halftime."""
-    breaks = [index for index in (12, 24) if index < len(results)]
-    divider, gap, count = 18, 4, len(results)
-    cell = min(56, (width - 2 * side_pad - divider * len(breaks) - gap * (count - 1)) / count)
-    x = (width - (cell * count + gap * (count - 1) + divider * len(breaks))) / 2
-    number_font = match_font(13, True)
-    draw = ImageDraw.Draw(image)
-    for index, won_round in enumerate(results):
-        if index in breaks:
-            line_x = x - gap / 2 + divider / 2
-            draw.line((line_x, center_y - 19, line_x, center_y + 19), fill=(240, 99, 106), width=2)
-            x += divider
-        fill, text = ROUND_WIN if won_round else ROUND_LOSS
-        left, right = round(x), round(x + cell)
-        draw_soft_box(image, (left, center_y - 15, right, center_y + 15), fill, opacity=255, radius=6,
-                      outline=(*text, 105))
-        draw = ImageDraw.Draw(image)
-        draw.text(((left + right) / 2, center_y), str(index + 1), font=number_font, fill=text, anchor="mm")
-        x += cell + gap
-
-
 def draw_play_result(detail, queued_players, all_teammates, representative, map_path, ai_recap=None, summary_players=None, tone="no_filter", footer=None, fallback_context="", discord_names=None):
     meta = detail.get("metadata", {})
     teams = {t.get("team_id"): t for t in detail.get("teams", [])}
@@ -398,8 +356,6 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     tracked = _build_tracked(detail, queued_players, all_teammates, round_count, kills_per_round,
                              first_bloods, first_deaths, top_score, low_score)
     width, hero_h, gap = 1200, 270, 18
-    round_results = _round_results(detail, representative.get("team_id"), our_score, their_score)
-    strip_h = ROUND_STRIP_HEIGHT if round_results else 0
     focus = summary_players if summary_players is not None else all_teammates
     registered_only = summary_players is not None
     focus_ids = {p.get("puuid") for p in focus if p.get("puuid")}
@@ -430,7 +386,7 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
         max_tag_rows = max(max_tag_rows, tag_rows)
     card_h = 208 + (max_tag_rows - 1) * 28
     rows = max(1, (len(tracked) + columns - 1) // columns)
-    cards_top = hero_h + strip_h + summary_h + 22
+    cards_top = hero_h + summary_h + 22
     cards_bottom = cards_top + rows * (card_h + gap) - gap
     footer_height = 58 if footer else 26
     height = cards_bottom + footer_height
@@ -448,9 +404,6 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
         except Exception:
             pass
     draw.rectangle((0, hero_h, width, height), fill=(17, 17, 22))
-    if round_results:
-        _draw_round_strip(image, hero_h + 33, round_results, width, side_pad)
-        draw = ImageDraw.Draw(image)
     accent = (72, 181, 105) if won else (220, 86, 94)
     headline_color = (102, 207, 147) if won else (240, 99, 106)
     if not won and "won" in rounds and "lost" in rounds and our_score == their_score:
@@ -480,9 +433,9 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
         while headline and draw.textlength(headline + "...", font=headline_font) > width - 64:
             headline = headline[:-1]
         headline = headline.rstrip() + "..."
-    draw.text((side_pad, hero_h + strip_h + 44), headline, font=headline_font, fill=headline_color, anchor="lm")
+    draw.text((side_pad, hero_h + 44), headline, font=headline_font, fill=headline_color, anchor="lm")
     for line_index, line in enumerate(recap_lines):
-        y = hero_h + strip_h + 100 + line_index * 42
+        y = hero_h + 100 + line_index * 42
         parts = mention_pattern.split(line) if mention_pattern else [line]
         prefix = ""
         for index, part in enumerate(parts):
