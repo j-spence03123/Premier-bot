@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageOps
 
-from graphics.assets import chip_width, draw_result_chip, draw_soft_box, match_font, wrap_image_text
+from graphics.assets import chip_width, draw_result_chip, draw_soft_box, match_font, readable_font, wrap_image_text
 from services.matchfeed import MATCHFEED_DAY_ZONE
 
 WIDTH, PAD = 1200, 40
@@ -122,8 +122,9 @@ def _draw_game_cards(image, draw, measure, y, games, map_art):
         draw_result_chip(image, (right - 16 - chip_width(chip_text, chip_font, 10), y + 16, right - 16, y + 50),
                          color, chip_text, chip_font, gradient=False)
         draw = ImageDraw.Draw(image)
-        draw.text((inner, y + 62), _fit(measure, f"{game['player']} · {game['agent']}", match_font(24),
-                                        card_width - 36), font=match_font(24), fill=WHITE)
+        title = f"{game['player']} · {game['agent']}"
+        title_font = readable_font(title, 24)
+        draw.text((inner, y + 62), _fit(measure, title, title_font, card_width - 36), font=title_font, fill=WHITE)
         played = game["started_at"].astimezone(MATCHFEED_DAY_ZONE)
         draw.text((inner, y + 98), _fit(measure, f"{game['map']} · {played:%a %d %b}", small, card_width - 36),
                   font=small, fill=MUTED)
@@ -188,11 +189,12 @@ def draw_weekly_recap(week, map_art=None):
     bar_left, bar_right = PAD + 440, WIDTH - PAD - 150
     middle = (bar_left + bar_right) // 2
     for player in players:
-        name = _fit(measure, player["name"], match_font(25), 145 if player["smurf"] else 220)
-        draw.text((PAD, y), name, font=match_font(25), fill=WHITE if player["games"] else MUTED)
+        name_font = readable_font(player["name"], 25)
+        name = _fit(measure, player["name"], name_font, 145 if player["smurf"] else 220)
+        draw.text((PAD, y), name, font=name_font, fill=WHITE if player["games"] else MUTED)
         if player["smurf"]:
             chip_font = match_font(12, True)
-            chip_left = PAD + round(measure.textlength(name, font=match_font(25))) + 10
+            chip_left = PAD + round(measure.textlength(name, font=name_font)) + 10
             chip_right = chip_left + round(measure.textlength("SMURF", font=chip_font)) + 16
             draw_soft_box(image, (chip_left, y + 4, chip_right, y + 28), SMURF_CHIP, opacity=255, radius=5)
             draw = ImageDraw.Draw(image)

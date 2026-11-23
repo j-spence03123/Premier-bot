@@ -7,7 +7,9 @@ falling back to whatever system font is installed.
 |---|---|---|---|
 | `Roboto-Regular.ttf`, `Roboto-Bold.ttf` | Roboto | Google Fonts | SIL OFL 1.1 (`OFL-Roboto.txt`) |
 | `Lora-Regular.ttf`, `Lora-Bold.ttf` | Lora | Google Fonts | SIL OFL 1.1 (`OFL-Lora.txt`) |
+| `NotoSansSC-Regular.ttf`, `NotoSansSC-Bold.ttf` | Noto Sans SC | Google Fonts | SIL OFL 1.1 (`OFL-NotoSansSC.txt`) |
 
-Roboto covers Latin, Cyrillic and Greek. Text with characters it cannot draw
-(for example CJK names) falls back to a system font; see `readable_font` in
-`graphics/assets.py`.
+Roboto covers Latin, Cyrillic and Greek. Text it can't draw uses Noto Sans SC,
+which adds Chinese (simplified and traditional), Japanese and more symbols, and
+anything neither covers (Korean, Thai, Arabic) uses a system font. See
+`readable_font` in `graphics/assets.py`.

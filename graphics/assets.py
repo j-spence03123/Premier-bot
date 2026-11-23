@@ -100,10 +100,23 @@ def supports(image_font, text):
     return all(char.isspace() or bytes(image_font.getmask(char)) != missing for char in set(text))
 
 
+def fallback_font(size, bold=False):
+    """Noto Sans SC: Roboto's companion with Chinese, Japanese, Cyrillic, Greek and Vietnamese."""
+    try:
+        return ImageFont.truetype(str(MATCH_FONT_DIR / ("NotoSansSC-Bold.ttf" if bold else "NotoSansSC-Regular.ttf")), size)
+    except OSError:
+        return None
+
+
 def readable_font(text, size, bold=False):
-    """The bundled card font when it can draw ``text``, otherwise the best system font."""
+    """Roboto when it can draw ``text``, then Noto Sans SC, then the best system font."""
     bundled = match_font(size, bold)
-    return bundled if supports(bundled, text) else font(size, bold=bold)
+    if supports(bundled, text):
+        return bundled
+    noto = fallback_font(size, bold)
+    if noto is not None and supports(noto, text):
+        return noto
+    return font(size, bold=bold)
 
 
 def draw_soft_box(image, box, fill, opacity=224, radius=4, *, outline=None):

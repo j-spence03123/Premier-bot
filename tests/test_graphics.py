@@ -455,7 +455,9 @@ def test_bundled_card_fonts_load_and_fall_back_for_missing_glyphs():
     assert supports(match_font(20), "Kairo · Жора – 13–9")
     assert not supports(match_font(20), "名前")
     assert readable_font("Kairo", 20).getname()[0] == "Roboto"
-    assert readable_font("名前", 20).getname()[0] != "Roboto"
+    assert readable_font("名前", 20).getname()[0] == "Noto Sans SC"
+    assert readable_font("ひらがな", 20, True).getname() == ("Noto Sans SC", "Bold")
+    assert readable_font("한글", 20).getname()[0] not in ("Roboto", "Noto Sans SC")  # Korean: system font
 
 
 def test_missing_tag_fields_are_reported_once(caplog):
