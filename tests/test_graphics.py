@@ -331,4 +331,4 @@ def test_match_card_renderer_accepts_missing_icons_and_map_art():
 
     width, height = _png_size(buffer)
     assert width == 1200
-    assert height > 650  # five teammate cards render across three rows
+    assert height > 650  # hero, summary and five scoreboard rows

@@ -85,6 +85,51 @@ def match_font(size, bold=False, serif=False):
         return font(size, bold=bold, serif=serif)
 
 
+def display_font(size, bold=True):
+    """Condensed display face for big numbers and titles; falls back to bold Roboto."""
+    name = "BarlowCondensed-Bold.ttf" if bold else "BarlowCondensed-SemiBold.ttf"
+    try:
+        return ImageFont.truetype(str(MATCH_FONT_DIR / name), size)
+    except OSError:
+        return match_font(size, True)
+
+
+def supports(image_font, text):
+    """True when ``image_font`` has a glyph for every visible character in ``text``."""
+    try:
+        missing = bytes(image_font.getmask(""))
+    except Exception:
+        return True
+    return all(char.isspace() or bytes(image_font.getmask(char)) != missing for char in set(text))
+
+
+def readable_font(text, size, bold=False):
+    """Bundled Roboto when it can draw ``text``, otherwise the best system font."""
+    bundled = match_font(size, bold)
+    return bundled if supports(bundled, text) else font(size, bold=bold)
+
+
+def display_font_for(text, size, bold=True):
+    """Display face for ``text``, dropping to a readable font for scripts it lacks."""
+    face = display_font(size, bold)
+    return face if supports(face, text) else readable_font(text, size, True)
+
+
+def draw_spaced_text(draw, xy, text, image_font, fill, spacing, anchor="ls"):
+    """Draw letter-spaced text (Pillow has no tracking). Anchors: l/m/r plus a vertical anchor."""
+    x, y = xy
+    widths = [draw.textlength(char, font=image_font) for char in text]
+    total = sum(widths) + spacing * max(len(text) - 1, 0)
+    if anchor[0] == "m":
+        x -= total / 2
+    elif anchor[0] == "r":
+        x -= total
+    for char, width in zip(text, widths):
+        draw.text((x, y), char, font=image_font, fill=fill, anchor="l" + anchor[1])
+        x += width + spacing
+    return total
+
+
 def draw_soft_box(image, box, fill, opacity=224, radius=4, *, outline=None):
     """Draw a lightly transparent, antialiased chip on an existing RGB image."""
     left, top, right, bottom = box

@@ -5,10 +5,12 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageOps
 
-from graphics.assets import chip_width, draw_result_chip, draw_tinted_box, match_font, wrap_image_text
+from graphics.assets import (chip_width, display_font, draw_result_chip, draw_soft_box, draw_spaced_text, draw_tinted_box,
+                             match_font, readable_font, wrap_image_text)
 from services.matchfeed import MATCHFEED_DAY_ZONE
 
 WIDTH, PAD = 1200, 40
+SMURF_CHIP, SMURF_TEXT = (66, 45, 104), (214, 192, 255)
 BACKGROUND = (17, 17, 22)
 PANEL, PANEL_EDGE = (28, 27, 32), (57, 55, 63)
 TILE = (38, 37, 43)
@@ -42,9 +44,8 @@ def _result(game_or_match):
 
 
 def _section_title(draw, measure, y, title):
-    font = match_font(20, True)
-    draw.text((PAD, y), title, font=font, fill=CORAL)
-    draw.line((PAD + measure.textlength(title, font=font) + 16, y + 13, WIDTH - PAD, y + 13), fill=RULE)
+    width = draw_spaced_text(draw, (PAD, y + 13), title, match_font(16, True), CORAL, 2, anchor="lm")
+    draw.line((PAD + width + 16, y + 13, WIDTH - PAD, y + 13), fill=RULE)
 
 
 def _rr_text(player):
@@ -115,7 +116,7 @@ def _draw_game_cards(image, draw, measure, y, games, map_art):
         draw.rounded_rectangle(box, radius=12, fill=None if has_art else PANEL,
                                outline=edge_color)
         inner = left + 18
-        draw.text((inner, y + 14), f"{index + 1}.", font=match_font(30, True), fill=rank_color)
+        draw.text((inner, y + 50), f"{index + 1}", font=display_font(46), fill=rank_color, anchor="ls")
         letter, color = _result(game)
         chip_text, chip_font = f"{letter} {game['score']}".strip(), match_font(20, True)
         draw_result_chip(image, (right - 16 - chip_width(chip_text, chip_font, 10), y + 16, right - 16, y + 50),
@@ -163,18 +164,22 @@ def draw_weekly_recap(week, map_art=None):
     start = week["start"].astimezone(MATCHFEED_DAY_ZONE)
     end = week["end"].astimezone(MATCHFEED_DAY_ZONE)
     draw.rounded_rectangle((20, 20, WIDTH - 20, 20 + HEADER_HEIGHT), radius=14, fill=PANEL, outline=PANEL_EDGE)
-    draw.text((PAD, 40), "WEEKLY RECAP", font=match_font(20, True), fill=CORAL)
-    draw.text((PAD, 70), f"{start:%d %b} – {end:%d %b}", font=match_font(54, True), fill=WHITE)
-    draw.text((PAD, 142), f"{start:%a %H:%M} – {end:%a %H:%M} UK", font=body, fill=MUTED)
+    draw_spaced_text(draw, (PAD, 54), "WEEKLY RECAP", match_font(16, True), CORAL, 2, anchor="lm")
+    draw.text((PAD, 140), f"{start:%d %b} – {end:%d %b}".upper(), font=display_font(82), fill=WHITE, anchor="ls")
+    draw.text((PAD, 174), f"{start:%a %H:%M} – {end:%a %H:%M} UK", font=match_font(19), fill=MUTED, anchor="ls")
     squad = week["squad"]
-    tiles = (("GAMES", str(squad["games"])), ("RECORD", f"{squad['wins']}W {squad['losses']}L"))
-    tile_font, right = match_font(38, True), WIDTH - PAD
-    for label, value in reversed(tiles):
-        tile_width = max(150, round(measure.textlength(value, font=tile_font)) + 32)
-        box = (right - tile_width, 70, right, 166)
+    tiles = [("GAMES", str(squad["games"]), WHITE), ("RECORD", f"{squad['wins']}W {squad['losses']}L", WHITE)]
+    if premier:
+        points = premier.get("points")
+        tiles.append(("PREMIER", f"{points:+d}" if points is not None else f"{premier['wins']}W {premier['losses']}L",
+                      GREEN if (points or 0) >= 0 else CORAL))
+    tile_font, label_font, right = display_font(48), match_font(13, True), WIDTH - PAD
+    for label, value, color in reversed(tiles):
+        tile_width = max(140, round(measure.textlength(value, font=tile_font)) + 36)
+        box = (right - tile_width, 66, right, 170)
         draw.rounded_rectangle(box, radius=10, fill=TILE, outline=PANEL_EDGE)
-        draw.text((box[0] + 16, box[1] + 14), label, font=match_font(15, True), fill=MUTED)
-        draw.text((box[0] + 16, box[1] + 38), value, font=tile_font, fill=WHITE)
+        draw_spaced_text(draw, (box[0] + 18, box[1] + 24), label, label_font, MUTED, 2, anchor="lm")
+        draw.text((box[0] + 18, box[3] - 18), value, font=tile_font, fill=color, anchor="ls")
         right = box[0] - 12
 
     # RR list with a bar that grows right for gains and left for losses.
@@ -187,9 +192,14 @@ def draw_weekly_recap(week, map_art=None):
     bar_left, bar_right = PAD + 440, WIDTH - PAD - 150
     middle = (bar_left + bar_right) // 2
     for player in players:
-        name = player["name"] + (" (smurf)" if player["smurf"] else "")
-        draw.text((PAD, y), _fit(measure, name, match_font(25), 220), font=match_font(25),
-                  fill=WHITE if player["games"] else MUTED)
+        name_font = readable_font(player["name"], 25)
+        name = _fit(measure, player["name"], name_font, 150 if player["smurf"] else 220)
+        draw.text((PAD, y), name, font=name_font, fill=WHITE if player["games"] else MUTED)
+        if player["smurf"]:
+            chip_left = PAD + round(measure.textlength(name, font=name_font)) + 10
+            draw_soft_box(image, (chip_left, y + 4, chip_left + 62, y + 28), SMURF_CHIP, opacity=255, radius=5)
+            draw = ImageDraw.Draw(image)
+            draw.text((chip_left + 31, y + 16), "SMURF", font=match_font(12, True), fill=SMURF_TEXT, anchor="mm")
         record = (f"{_plural(player['games'], 'game')} · {player['wins']}W {player['losses']}L"
                   if player["games"] else "No games")
         draw.text((PAD + 230, y + 4), _fit(measure, record, small, 200), font=small, fill=MUTED)
@@ -202,7 +212,7 @@ def draw_weekly_recap(week, map_art=None):
             else:
                 draw.rounded_rectangle((middle - length, bar_y, middle, bar_y + 10), radius=5, fill=CORAL)
         label, color = _rr_text(player)
-        draw.text((WIDTH - PAD, y), label, font=match_font(24, True), fill=color, anchor="ra")
+        draw.text((WIDTH - PAD, y + 26), label, font=display_font(32), fill=color, anchor="rs")
         y += RR_ROW
 
     # Top games as three side-by-side cards (main accounts only).
@@ -225,7 +235,7 @@ def draw_weekly_recap(week, map_art=None):
     half = (WIDTH - PAD * 2 - panel_gap) // 2
     rank_right = PAD + half if premier else WIDTH - PAD
     draw.rounded_rectangle((PAD, y, rank_right, y + side_height), radius=12, fill=PANEL, outline=PANEL_EDGE)
-    draw.text((PAD + 20, y + 18), "RANK CHANGES", font=match_font(20, True), fill=CORAL)
+    draw_spaced_text(draw, (PAD + 20, y + 30), "RANK CHANGES", match_font(16, True), CORAL, 2, anchor="lm")
     row_y = y + 64
     if not week["rank_changes"]:
         draw.text((PAD + 20, row_y), "No rank changes this week.", font=body, fill=MUTED)
@@ -238,7 +248,7 @@ def draw_weekly_recap(week, map_art=None):
     if premier:
         left = PAD + half + panel_gap
         draw.rounded_rectangle((left, y, WIDTH - PAD, y + side_height), radius=12, fill=PANEL, outline=PANEL_EDGE)
-        draw.text((left + 20, y + 18), "PREMIER", font=match_font(20, True), fill=CORAL)
+        draw_spaced_text(draw, (left + 20, y + 30), "PREMIER", match_font(16, True), CORAL, 2, anchor="lm")
         record = f"{premier['wins']}W {premier['losses']}L"
         points = f" · {premier['points']:+d} points" if premier["points"] is not None else ""
         bold = match_font(21, True)
