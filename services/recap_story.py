@@ -27,6 +27,22 @@ _SPELLED = re.compile(
     re.IGNORECASE,
 )
 _DIGITS = re.compile(r"\d+(?:\.\d+)?")
+# Scores and stat lines such as 13-9, 8–4 or 24/13/4.
+_NUMBER_GROUP = re.compile(r"\d+(?:\.\d+)?(?:\s*[-–/]\s*\d+(?:\.\d+)?)+")
+
+
+def _number_groups(text):
+    return [tuple(part.strip() for part in re.split(r"[-–/]", group)) for group in _NUMBER_GROUP.findall(text)]
+
+
+def _unbacked_groups(text, packet):
+    """Score-like groups in ``text`` that don't appear (in order, any separator) anywhere in ``packet``."""
+    allowed = _number_groups(packet)
+
+    def backed(parts):
+        return any(parts == source[i:i + len(parts)] for source in allowed for i in range(len(source)))
+
+    return sorted({"-".join(parts) for parts in _number_groups(text) if not backed(parts)})
 # "one" and "two" are ordinary prose ("one round", "two ranks below"); bigger spelled numbers are claims.
 _SPELLED_MINIMUM = 3
 
@@ -510,6 +526,9 @@ def validate_recap(output, packet, *, names=(), other_names=(), labels=(), agent
     if invented:
         shown = ", ".join(f"{n:g}" for n in invented)
         problems.append(f"numbers not in FACTS: {shown}")
+    unbacked = _unbacked_groups(f"{headline} {body}", packet)
+    if unbacked:
+        problems.append("scores or stat lines not in FACTS: " + ", ".join(unbacked))
     plain = f"{headline} {body}"
     for phrase in sorted(exempt, key=len, reverse=True):
         plain = re.sub(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", " ", plain, flags=re.IGNORECASE)

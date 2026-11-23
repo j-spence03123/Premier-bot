@@ -245,3 +245,12 @@ def test_top_enemy_is_left_out_unless_they_really_went_off():
     detail = _grudge_match()
     detail["players"][-5]["stats"] = {"kills": 22, "deaths": 15, "assists": 4, "score": 280 * 18}
     assert "TOP_ENEMY" not in packet_for(detail)[0]  # 22 kills in a game the squad lost: not worth a mention
+
+
+def test_validator_rejects_score_pairs_that_are_not_in_the_facts():
+    packet = "RESULT: Defeat 8-13 on Abyss\nHALVES: first half 5-7, second half 3-6\nFEATURED:\n- Player2 (Chamber): 7/18/7"
+    padding = " Nothing else here carries a figure at all, which is exactly the point of this padding." * 7
+    good = {"headline": "player2 at 7/18", "body": "Player2 went 7-18-7 in an 8–13 loss after a 5-7 half." + padding}
+    assert validate_recap(good, packet, names={"Player2"})[1] == []
+    invented = dict(good, body="Player2 traded first bloods 7-8 with the enemy in an 8-13 loss." + padding)
+    assert "scores or stat lines not in FACTS: 7-8" in validate_recap(invented, packet, names={"Player2"})[1]
