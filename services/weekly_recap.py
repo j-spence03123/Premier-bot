@@ -578,16 +578,19 @@ async def run_weekly_recap(*, client, now, load_matchfeeds, load_accounts, load_
 
 async def preview_weekly_recap(guild, *, now, load_accounts, load_weekly_recaps, load_matchfeeds, cached_api,
                                history, load_summaries, affinity, http_session, groq_api_key, groq_model,
-                               pace=REQUEST_PACING_SECONDS, is_cached=None, map_art=None):
-    """Recap of the current week so far, for admins to check the card."""
-    start = week_end_at_or_before(now)
+                               pace=REQUEST_PACING_SECONDS, is_cached=None, map_art=None, previous=False):
+    """Recap of the current week so far (or the last completed week with ``previous``), for admins to check the card.
+
+    Never posts anything or touches saved recap state.
+    """
+    start, end = completed_week(now) if previous else (week_end_at_or_before(now), now)
     recaps = load_weekly_recaps()
     feed = load_matchfeeds().get(str(guild.id)) or {}
     players = await collect_player_data(load_accounts(), cached_api=cached_api, affinity=affinity, start=start,
-                                        end=now, baselines=recaps.get("baselines", {}), pace=pace,
+                                        end=end, baselines=recaps.get("baselines", {}), pace=pace,
                                         is_cached=is_cached)
-    premier = await collect_premier(history=history, load_summaries=load_summaries, start=start, end=now)
-    file, _ = await build_guild_recap(guild, players, premier, start, now, tone=feed.get("tone"),
+    premier = await collect_premier(history=history, load_summaries=load_summaries, start=start, end=end)
+    file, _ = await build_guild_recap(guild, players, premier, start, end, tone=feed.get("tone"),
                                       http_session=http_session, api_key=groq_api_key, model=groq_model,
                                       map_art=map_art)
     return file

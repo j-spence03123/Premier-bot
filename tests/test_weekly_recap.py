@@ -200,6 +200,19 @@ async def test_run_skips_weeks_that_ended_long_ago():
     load.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_previous_week_preview_uses_last_completed_week_without_saving():
+    state = {}
+    guild = SimpleNamespace(id=1, get_member=Mock(return_value=object()))
+    file = await weekly_recap.preview_weekly_recap(
+        guild, now=END.astimezone(timezone.utc) + timedelta(days=3), previous=True,
+        load_accounts=lambda: {"10": {"name": "Player", "tag": "EU"}}, load_weekly_recaps=lambda: state,
+        load_matchfeeds=lambda: {}, cached_api=fake_api, history=AsyncMock(return_value=[]),
+        load_summaries=AsyncMock(), affinity="eu", http_session=None, groq_api_key=None, groq_model="m", pace=0)
+    assert file.filename == "weekly-recap-2026-11-15.png"
+    assert state == {}
+
+
 def test_card_bytes_are_png():
     week = sample_week()
     assert draw_weekly_recap(week).getvalue()[:8] == BytesIO(b"\x89PNG\r\n\x1a\n").getvalue()

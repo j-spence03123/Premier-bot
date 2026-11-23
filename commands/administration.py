@@ -55,6 +55,12 @@ class AdministrationCog(commands.Cog):
     async def weekly_recap(self, interaction: discord.Interaction):
         return await admin_handlers.weekly_recap_preview(interaction, preview_weekly_recap=self.runtime.preview_weekly_recap)
 
+    @app_commands.command(name='testweeklyrecap', description='Preview last week\'s recap without posting it (administrators only)')
+    @app_commands.default_permissions(administrator=True)
+    async def test_weekly_recap(self, interaction: discord.Interaction):
+        return await admin_handlers.weekly_recap_preview(interaction, preview_weekly_recap=self.runtime.preview_weekly_recap,
+                                                         previous=True)
+
     @app_commands.command(name='help', description='List all commands')
     async def help_cmd(self, interaction: discord.Interaction):
         return await admin_handlers.help_cmd(interaction, HELP_SECTIONS=admin_handlers.HELP_SECTIONS, render_help_card=render_help_card, tree=self.runtime.tree)

@@ -402,9 +402,9 @@ async def weekly_map_art(map_id, map_name):
     return await map_background_path(map_uuid, map_name) if map_uuid else None
 
 
-async def preview_weekly_recap(guild):
+async def preview_weekly_recap(guild, previous=False):
     return await weekly_recap.preview_weekly_recap(
-        guild, now=datetime.now(timezone.utc), load_accounts=load_accounts,
+        guild, now=datetime.now(timezone.utc), previous=previous, load_accounts=load_accounts,
         load_weekly_recaps=load_weekly_recaps, load_matchfeeds=load_matchfeeds, cached_api=cached_api,
         is_cached=api_is_cached, map_art=weekly_map_art, history=history, load_summaries=load_summaries, affinity=AFFINITY,
         http_session=client.http_session, groq_api_key=SETTINGS.groq_api_key, groq_model=SETTINGS.groq_model,
