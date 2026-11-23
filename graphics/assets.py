@@ -58,9 +58,7 @@ PLAY_TAG_STYLES = {
     "LVP": ((104, 39, 39), (238, 139, 139)),            # red
     "VICTIM": ((125, 16, 36), (255, 196, 204), 235),    # solid crimson
     "TEAM KILLER": ((200, 30, 30), (255, 255, 255), 235),  # solid red
-    "DIED ALONE": ((80, 48, 52), (222, 160, 166)),      # dusty red
-    "CHOKED": ((104, 58, 32), (240, 170, 120)),         # rust
-    "HUMBLED": ((39, 55, 104), (139, 164, 238)),        # bruise blue
+    "CHOKER": ((104, 58, 32), (240, 170, 120)),         # rust
     "TOURIST": ((88, 72, 52), (224, 196, 160)),         # sand
     "KNIFED": ((44, 44, 52), (255, 140, 140)),          # steel with red text
     "AFK": ((70, 72, 80), (205, 208, 218)),             # grey

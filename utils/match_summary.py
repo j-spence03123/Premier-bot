@@ -62,11 +62,7 @@ def _play_recap(map_name, won, our_score, their_score, tracked, all_teammates, d
                 events.append(f"{name} only went down {item['st'].get('deaths', 0)} times and stayed out of the respawn queue")
             elif tag.startswith("KNIFED"):
                 events.append(f"{name} got knifed, which will be in the group chat by morning")
-            elif tag == "HUMBLED":
-                events.append(f"{name} kept running into the same enemy and losing every time")
-            elif tag == "DIED ALONE":
-                events.append(f"{name} kept dying where nobody could trade")
-            elif tag == "CHOKED":
+            elif tag == "CHOKER":
                 events.append(f"{name} was left alone with the round on the line and fumbled it every time")
             elif tag == "TOURIST":
                 events.append(f"{name} spent most rounds sightseeing")

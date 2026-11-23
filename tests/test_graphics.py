@@ -374,31 +374,7 @@ def test_knifed_is_shared_by_everyone_an_enemy_knifes():
     assert "KNIFED x2" in tags["Red-3"]
 
 
-def test_humbled_needs_five_deaths_to_the_same_enemy():
-    players, enemies = _roast_lobby()
-    kills = [_kill(r, "Blue-0", "Red-2") for r in range(5)] + [_kill(r, "Blue-1", "Red-4") for r in range(5, 9)]
-
-    tags = _tags_for(players, enemies, kills)
-
-    assert "HUMBLED" in tags["Red-2"]
-    assert "HUMBLED" not in tags["Red-4"]
-
-
-def test_died_alone_counts_deaths_that_no_teammate_traded():
-    players, enemies = _roast_lobby()
-    kills = []
-    for r in range(6):
-        kills.append(_kill(r, "Blue-0", "Red-4", time=10_000))
-        kills.append(_kill(r, "Blue-1", "Red-1", time=20_000))
-        kills.append(_kill(r, "Red-0", "Blue-1", time=21_500))  # Red-1's killer dies 1.5s later: traded
-
-    tags = _tags_for(players, enemies, kills)
-
-    assert "DIED ALONE" in tags["Red-4"]
-    assert "DIED ALONE" not in tags["Red-1"]
-
-
-def test_choked_goes_to_the_last_player_alive_in_lost_rounds():
+def test_choker_goes_to_the_last_player_alive_in_lost_rounds():
     players, enemies = _roast_lobby()
     kills, rounds = [], []
     for r in range(4):
@@ -407,7 +383,7 @@ def test_choked_goes_to_the_last_player_alive_in_lost_rounds():
 
     tags = _tags_for(players, enemies, kills, rounds)
 
-    assert "CHOKED" in tags["Red-2"]
+    assert "CHOKER" in tags["Red-2"]
 
 
 def test_tourist_counts_rounds_without_a_kill_or_assist():

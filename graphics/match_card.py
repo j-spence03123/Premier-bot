@@ -1,4 +1,3 @@
-from collections import Counter
 import io
 from datetime import timezone
 from pathlib import Path
@@ -19,10 +18,7 @@ KNIFE_WEAPONS = {"knife", "melee"}
 ECO_LOADOUT_RATIO = 0.5
 ECO_MIN_KILLER_LOADOUT = 2500
 PASSENGER_SCORE_RATIO = 0.8
-TRADE_WINDOW_MS = 3000
-DIED_ALONE_MIN_DEATHS = 6
-HUMBLED_MIN_DEATHS = 5
-CHOKED_MIN_LOSSES = 4
+CHOKER_MIN_LOSSES = 4
 TOURIST_IDLE_SHARE = 0.6
 
 
@@ -126,44 +122,24 @@ def _kill_events(detail):
 def _roast_events(detail, teammate_ids):
     """Per-teammate counts behind the roast tags.
 
-    Returns (knifed, humbled, untraded, involved): times knifed by an enemy, most deaths to one enemy,
-    deaths no teammate traded within TRADE_WINDOW_MS, and the rounds each player got a kill or an assist in.
+    Returns (knifed, involved): times knifed by an enemy, and the rounds each player got a kill or an assist in.
     """
-    knifed, deaths_by_enemy, untraded, involved = {}, {}, {}, {}
-    by_round = {}
+    knifed, involved = {}, {}
     for event in detail.get("kills") or []:
-        by_round.setdefault(event.get("round", 0) or 0, []).append(event)
-    for number, events in by_round.items():
-        for event in events:
-            killer = (event.get("killer") or {}).get("puuid")
-            victim = (event.get("victim") or {}).get("puuid")
-            if killer in teammate_ids and victim and victim not in teammate_ids:
-                involved.setdefault(killer, set()).add(number)
-            for helper in event.get("assistants") or []:
-                helper_id = helper.get("puuid") if isinstance(helper, dict) else None
-                if helper_id in teammate_ids:
-                    involved.setdefault(helper_id, set()).add(number)
-            if victim in teammate_ids and killer and killer not in teammate_ids:
-                deaths_by_enemy.setdefault(victim, Counter())[killer] += 1
-                weapon = event.get("weapon") or {}
-                if isinstance(weapon, dict) and str(weapon.get("name") or "").casefold() in KNIFE_WEAPONS:
-                    knifed[victim] = knifed.get(victim, 0) + 1
-        timed = sorted((event for event in events if isinstance(event.get("time_in_round_in_ms"), (int, float))),
-                       key=lambda event: event["time_in_round_in_ms"])
-        for index, event in enumerate(timed):
-            killer = (event.get("killer") or {}).get("puuid")
-            victim = (event.get("victim") or {}).get("puuid")
-            if victim not in teammate_ids or not killer or killer in teammate_ids:
-                continue
-            deadline = event["time_in_round_in_ms"] + TRADE_WINDOW_MS
-            traded = any((later.get("victim") or {}).get("puuid") == killer
-                         and (later.get("killer") or {}).get("puuid") in teammate_ids
-                         and later["time_in_round_in_ms"] <= deadline
-                         for later in timed[index + 1:])
-            if not traded:
-                untraded[victim] = untraded.get(victim, 0) + 1
-    humbled = {puuid: max(counts.values()) for puuid, counts in deaths_by_enemy.items()}
-    return knifed, humbled, untraded, involved
+        number = event.get("round", 0) or 0
+        killer = (event.get("killer") or {}).get("puuid")
+        victim = (event.get("victim") or {}).get("puuid")
+        if killer in teammate_ids and victim and victim not in teammate_ids:
+            involved.setdefault(killer, set()).add(number)
+        for helper in event.get("assistants") or []:
+            helper_id = helper.get("puuid") if isinstance(helper, dict) else None
+            if helper_id in teammate_ids:
+                involved.setdefault(helper_id, set()).add(number)
+        if victim in teammate_ids and killer and killer not in teammate_ids:
+            weapon = event.get("weapon") or {}
+            if isinstance(weapon, dict) and str(weapon.get("name") or "").casefold() in KNIFE_WEAPONS:
+                knifed[victim] = knifed.get(victim, 0) + 1
+    return knifed, involved
 
 
 def _friendly_fire(player):
@@ -182,8 +158,8 @@ def _build_tracked(detail, queued_players, all_teammates, round_count, kills_per
     def team_max(counts):
         return max((counts.get(puuid, 0) for puuid in teammate_ids), default=0)
 
-    knifed, humbled, untraded, involved = _roast_events(detail, teammate_ids)
-    most_humbled, most_untraded, most_choked = team_max(humbled), team_max(untraded), team_max(clutch_losses)
+    knifed, involved = _roast_events(detail, teammate_ids)
+    most_clutch_losses = team_max(clutch_losses)
     # Rounds with no kill or assist. Only meaningful when kill events name at least one teammate.
     idle = {puuid: round_count - len(involved.get(puuid, ())) for puuid in teammate_ids} if involved else {}
     most_idle = max(idle.values(), default=0)
@@ -257,12 +233,9 @@ def _build_tracked(detail, queued_players, all_teammates, round_count, kills_per
         if low_score is not None and st.get("score", 0) == low_score: tags.append("LVP")
         if knifed.get(puuid, 0):
             tags.append("KNIFED" if knifed[puuid] == 1 else f"KNIFED x{knifed[puuid]}")
-        if most_humbled >= HUMBLED_MIN_DEATHS and humbled.get(puuid, 0) == most_humbled: tags.append("HUMBLED")
-        if most_untraded >= DIED_ALONE_MIN_DEATHS and untraded.get(puuid, 0) == most_untraded:
-            tags.append("DIED ALONE")
-        if (most_choked >= CHOKED_MIN_LOSSES and clutch_losses.get(puuid, 0) == most_choked
+        if (most_clutch_losses >= CHOKER_MIN_LOSSES and clutch_losses.get(puuid, 0) == most_clutch_losses
                 and not clutch_wins.get(puuid)):
-            tags.append("CHOKED")
+            tags.append("CHOKER")
         if round_count >= 10 and most_idle >= TOURIST_IDLE_SHARE * round_count and idle.get(puuid) == most_idle:
             tags.append("TOURIST")
         afk_rounds = (p.get("behavior") or {}).get("afk_rounds")
