@@ -77,6 +77,7 @@ async def test_matchfeed_posts_new_match_before_checking_current_ranks(monkeypat
                   get_guild=Mock(return_value=guild),
                   get_channel=Mock(return_value=SimpleNamespace(send=send)))
     match_image = AsyncMock(return_value=SimpleNamespace(fp=BytesIO(b"image"), squad_callback_used=True))
+    record_clutches = Mock()
     await background_tasks.matchfeed_loop(
         client=client, load_matchfeeds=lambda: feeds,
         load_accounts=lambda: {"1": main},
@@ -84,7 +85,10 @@ async def test_matchfeed_posts_new_match_before_checking_current_ranks(monkeypat
         cached=AsyncMock(return_value=detail), match_detail=AsyncMock(), parse_time=parse_time,
         play_match_image=match_image,
         rank_change_image=AsyncMock(), save_matchfeed_progress=Mock(), AFFINITY="eu",
+        record_clutches=record_clutches,
     )
+    match_id, _, recorded_detail, linked_keys = record_clutches.call_args.args
+    assert (match_id, recorded_detail) == ("match", detail) and "friend#euw" in linked_keys
     account_count = 2 if smurf else 1
     assert order == ["history"] * account_count + ["post"] + ["rank"] * account_count
     assert match_image.await_args.kwargs["summary_players"][0]["is_smurf"] is smurf

@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageOps
 
 from graphics.assets import chip_width, draw_result_chip, draw_soft_box, match_font, readable_font, wrap_image_text
+from graphics.weekly_awards import awards_height, draw_awards
 from services.matchfeed import MATCHFEED_DAY_ZONE
 
 WIDTH, PAD = 1200, 40
@@ -139,8 +140,11 @@ def _draw_game_cards(image, draw, measure, y, games, map_art):
     return draw
 
 
-def draw_weekly_recap(week, map_art=None):
-    """``map_art`` maps casefolded map names to splash image paths used behind the top-game cards."""
+def draw_weekly_recap(week, map_art=None, agent_icons=None):
+    """``map_art`` maps casefolded map names to splash image paths used behind the top-game cards.
+
+    ``agent_icons`` maps casefolded agent names to images for the award tiles.
+    """
     map_art = map_art or {}
     measure = ImageDraw.Draw(Image.new("RGB", (WIDTH, 1)))
     body = match_font(23)
@@ -156,8 +160,10 @@ def draw_weekly_recap(week, map_art=None):
     smurf_height = (44 + GAME_CARD_HEIGHT + GAP) if smurf_games else 0
     side_height = _side_panel_height(week)
     summary_height = (44 + len(summary_lines) * SUMMARY_LINE) if summary_lines else 0
+    awards = week.get("awards")
+    award_height = awards_height(awards)
     height = (20 + HEADER_HEIGHT + GAP + rr_height + GAP + games_height + GAP + smurf_height + side_height
-              + (GAP + summary_height if summary_height else 0) + 60)
+              + (GAP + summary_height if summary_height else 0) + (GAP + award_height if award_height else 0) + 60)
     image = Image.new("RGB", (WIDTH, height), BACKGROUND)
     draw = ImageDraw.Draw(image)
 
@@ -275,6 +281,12 @@ def draw_weekly_recap(week, map_art=None):
         for line in summary_lines:
             draw.text((PAD, y), line, font=body, fill=WHITE)
             y += SUMMARY_LINE
+    else:
+        y += side_height
+
+    # Player of the week and individual awards.
+    if award_height:
+        draw = draw_awards(image, y + GAP, awards, agent_icons)
 
     footer = f"{start:%a %d %b %H:%M} – {end:%a %d %b %H:%M} UK"
     if any(player["partial"] for player in players):
