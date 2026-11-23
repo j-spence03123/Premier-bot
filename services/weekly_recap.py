@@ -30,6 +30,7 @@ BASELINE_TOLERANCE = timedelta(hours=3)
 REQUEST_PACING_SECONDS = 2.3
 TOP_GAMES = 3
 STORED_MATCH_PAGE = 30
+MAX_STORED_PAGES = 4  # up to 120 games per account, enough for any realistic week
 REQUESTS_PER_ACCOUNT = 3
 PREFETCH_MARGIN = timedelta(minutes=1)
 PREFETCH_MAX_LEAD = timedelta(minutes=9)  # stay inside the 10-minute cache TTL so warmed entries are still fresh
@@ -355,6 +356,24 @@ def unique_account_count(accounts):
     return len({f"{account['name']}#{account['tag']}".casefold() for _, account, _ in iter_linked_accounts(accounts)})
 
 
+async def _stored_matches(cached_api, pacer, is_cached, path, params, start):
+    """Page through stored matches until a page reaches back before ``start`` (or runs out)."""
+    rows = []
+    for page in range(1, MAX_STORED_PAGES + 1):
+        page_params = params if page == 1 else {**params, "page": page}
+        if not (is_cached and is_cached(path, **page_params)):
+            await pacer.wait()
+        data = await cached_api(path, 600, **page_params)
+        batch = [row for row in data or [] if isinstance(row, dict)]
+        rows.extend(batch)
+        times = [parse_time((row.get("meta") or {}).get("started_at")) for row in batch]
+        if len(batch) < params["size"] or any(when and when.tzinfo and when < start for when in times):
+            return rows
+    logger.warning("Weekly recap read %d stored matches without reaching %s; older games may be missing",
+                   len(rows), start.isoformat())
+    return rows
+
+
 async def collect_player_data(accounts, *, cached_api, affinity, start, end, baselines, pace=REQUEST_PACING_SECONDS,
                               is_cached=None):
     """Fetch stored matches, rank history and current rank once per linked account.
@@ -380,12 +399,13 @@ async def collect_player_data(accounts, *, cached_api, affinity, start, end, bas
         )
         for kind, path, params in requests:
             try:
+                if kind == "stored":
+                    stored = await _stored_matches(cached_api, pacer, is_cached, path, params, start)
+                    continue
                 if not (is_cached and is_cached(path, **params)):
                     await pacer.wait()
                 data = await cached_api(path, 600, **params)
-                if kind == "stored":
-                    stored = data or []
-                elif kind == "history":
+                if kind == "history":
                     history = data if isinstance(data, list) else []
                 else:
                     rank = (data.get("current") or {}) if isinstance(data, dict) else {}

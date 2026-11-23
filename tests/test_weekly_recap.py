@@ -265,3 +265,23 @@ def test_top_game_cards_show_map_art(tmp_path):
     plain = Image.open(draw_weekly_recap(week)).convert("RGB")
     with_art = Image.open(draw_weekly_recap(week, {"bind": art, "lotus": tmp_path / "missing.png"})).convert("RGB")
     assert plain.size == with_art.size and plain.tobytes() != with_art.tobytes()
+
+
+@pytest.mark.asyncio
+async def test_stored_matches_page_until_they_reach_the_week_start():
+    from services.weekly_recap import _stored_matches, RequestPacer
+    pages = {
+        1: [stored(f"a{i}", END - timedelta(hours=i + 1)) for i in range(30)],
+        2: [stored(f"b{i}", END - timedelta(days=2, hours=i)) for i in range(29)] + [stored("old", START - timedelta(hours=1))],
+        3: [stored("never", START - timedelta(days=3))],
+    }
+    calls = []
+
+    async def api(path, ttl, **params):
+        calls.append(params.get("page", 1))
+        return pages[params.get("page", 1)]
+
+    rows = await _stored_matches(api, RequestPacer(0), None, "/stored", {"mode": "competitive", "size": 30}, START)
+    assert calls == [1, 2]
+    assert len(rows) == 60
+    assert len(window_games(rows, START, END)) == 59
