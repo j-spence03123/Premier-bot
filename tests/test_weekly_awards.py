@@ -84,8 +84,9 @@ def test_player_of_the_week_leads_the_most_stats_among_main_accounts():
     awards = build_awards(squad())
     potw = awards["player_of_the_week"]
     assert potw["player"] == "Kevin" and potw["games"] == 13
-    assert potw["leads"] == ["rr", "kd", "acs", "hs"]
-    assert [stat["lead"] for stat in potw["stats"]] == [True, True, True, False, True, False]
+    assert potw["leads"] == ["rr", "kd", "acs"]
+    assert [stat["lead"] for stat in potw["stats"]] == [True, True, True, False, False]
+    assert "HS%" not in [stat["label"] for stat in potw["stats"]]
     assert potw["line"].startswith("+64 RR and nobody else got past +21.")
 
 

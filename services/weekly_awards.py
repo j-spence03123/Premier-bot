@@ -1,6 +1,6 @@
 """Weekly recap awards: one player of the week and one roast award each for the rest of the squad.
 
-Player of the week leads the most of ``POTW_STATS``; ties go to the best average placing. Roast awards are
+Player of the week leads the most of ``POTW_STATS`` (headshot rate is left out); ties go to the best average placing. Roast awards are
 handed out once each and at most one per player: rarer event awards first, then stat awards among whoever is
 still empty-handed. Only main accounts take part.
 """
@@ -18,7 +18,6 @@ POTW_STATS = (
     ("kd", "KD", lambda value: f"{value:.2f}", "KD"),
     ("acs", "ACS", lambda value: f"{value:.0f}", "ACS"),
     ("adr", "ADR", lambda value: f"{value:.0f}", "ADR"),
-    ("hs", "HS%", lambda value: f"{value:.0f}%", "headshot rate"),
     ("wr", "WIN %", lambda value: f"{value:.0f}%", "win rate"),
 )
 
