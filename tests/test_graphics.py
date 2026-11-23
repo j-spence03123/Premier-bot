@@ -129,6 +129,43 @@ def test_eco_fraud_ignores_kills_made_on_a_cheap_buy():
     assert "ECO FRAUD" not in tags["Red-4"]
 
 
+def test_knife_tag_is_shared_and_counts_multiple_knife_kills():
+    players = [_tag_player(i) for i in range(5)]
+    enemies = [_tag_player(i, team="Blue") for i in range(5)]
+    kills = [_kill(0, "Red-0", "Blue-0", weapon="Melee"), _kill(1, "Red-0", "Blue-1", weapon="Knife"),
+             _kill(2, "Red-3", "Blue-2", weapon="Melee"), _kill(3, "Blue-0", "Red-4", weapon="Melee")]
+
+    tags = _tags_for(players, enemies, kills)
+
+    assert "KNIFE x2" in tags["Red-0"]
+    assert "KNIFE" in tags["Red-3"]
+    assert not any(tag.startswith("KNIFE") for tag in tags["Red-4"])
+
+
+def test_exit_farmer_goes_to_most_kills_in_lost_rounds():
+    players = [_tag_player(i) for i in range(5)]
+    enemies = [_tag_player(i, team="Blue") for i in range(5)]
+    rounds = [{"id": r, "winning_team": "Blue" if r < 6 else "Red"} for r in range(10)]
+    kills = [_kill(r, "Red-2", f"Blue-{r % 5}") for r in range(6)]
+    kills += [_kill(r, "Red-1", f"Blue-{r % 5}") for r in range(6, 10) for _ in range(2)]
+
+    tags = _tags_for(players, enemies, kills, rounds)
+
+    assert "EXIT FARMER" in tags["Red-2"]
+    assert "EXIT FARMER" not in tags["Red-1"]
+
+
+def test_exit_farmer_needs_enough_lost_round_kills():
+    players = [_tag_player(i) for i in range(5)]
+    enemies = [_tag_player(i, team="Blue") for i in range(5)]
+    rounds = [{"id": r, "winning_team": "Blue"} for r in range(5)]
+    kills = [_kill(r, "Red-2", f"Blue-{r}") for r in range(5)]
+
+    tags = _tags_for(players, enemies, kills, rounds)
+
+    assert not any("EXIT FARMER" in player_tags for player_tags in tags.values())
+
+
 def test_team_killer_prefers_actual_team_kills_over_friendly_fire():
     players = [_tag_player(i, friendly_fire=300 if i == 1 else 0) for i in range(5)]
     enemies = [_tag_player(i, team="Blue") for i in range(5)]

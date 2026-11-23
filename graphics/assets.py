@@ -52,6 +52,8 @@ PLAY_TAG_STYLES = {
     "BODY SHOOTER": ((110, 60, 25), (225, 150, 85)),    # copper
     "PASSENGER": ((100, 92, 70), (235, 220, 180)),      # sand
     "VICTIM": ((70, 72, 80), (205, 208, 218)),          # grey
+    "KNIFE": ((215, 222, 232), (24, 26, 32), 235),      # solid steel
+    "EXIT FARMER": ((55, 65, 100), (165, 182, 225)),    # slate
 }
 
 

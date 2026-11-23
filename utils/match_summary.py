@@ -60,6 +60,10 @@ def _play_recap(map_name, won, our_score, their_score, tracked, all_teammates, d
                 events.append(f"{name} put up {item['adr']} ADR and kept the damage numbers employed")
             elif tag == "SURVIVOR":
                 events.append(f"{name} only went down {item['st'].get('deaths', 0)} times and stayed out of the respawn queue")
+            elif tag.startswith("KNIFE"):
+                events.append(f"{name} got a knife kill and will be replaying it all week")
+            elif tag == "EXIT FARMER":
+                events.append(f"{name} farmed kills in rounds that were already lost")
             elif tag.startswith("CLUTCH"):
                 events.append(f"{name} won {tag.rsplit('x', 1)[-1]} clutch round(s) and will mention it all week")
     if events and not highlights:

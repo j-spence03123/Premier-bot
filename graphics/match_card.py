@@ -11,8 +11,10 @@ from utils.match_summary import _clutch_wins, _deaths_by_round, _play_headline, 
 
 
 # Tags every eligible player keeps, even when a teammate earned the same one.
-SHARED_TAGS = {"ACE", "CLUTCH", "VICTIM"}
+SHARED_TAGS = {"ACE", "CLUTCH", "VICTIM", "KNIFE"}
 OPERATOR_MIN_KILLS = 6
+EXIT_FARMER_MIN_KILLS = 6
+KNIFE_WEAPONS = {"knife", "melee"}
 ECO_LOADOUT_RATIO = 0.5
 ECO_MIN_KILLER_LOADOUT = 2500
 PASSENGER_SCORE_RATIO = 0.8
@@ -70,11 +72,22 @@ def _loadouts(detail):
     return loadouts
 
 
+def _round_winners(detail):
+    """Map round number -> casefolded winning team id, for rounds that report one."""
+    winners = {}
+    for index, round_data in enumerate(detail.get("rounds") or []):
+        winner = str(round_data.get("winning_team") or "").casefold()
+        if winner:
+            winners[_round_number(round_data, index)] = winner
+    return winners
+
+
 def _kill_events(detail):
-    """Count Operator kills, eco kills and team kills per player."""
+    """Count Operator, eco, team, knife and lost-round kills per player."""
     team_by_puuid = {p.get("puuid"): p.get("team_id") for p in detail.get("players") or [] if p.get("puuid")}
     loadouts = _loadouts(detail)
-    operator, eco, team_kills = {}, {}, {}
+    winners = _round_winners(detail)
+    operator, eco, team_kills, knife, lost_round = {}, {}, {}, {}, {}
     for event in detail.get("kills") or []:
         killer = (event.get("killer") or {}).get("puuid")
         victim = (event.get("victim") or {}).get("puuid")
@@ -86,15 +99,22 @@ def _kill_events(detail):
             team_kills[killer] = team_kills.get(killer, 0) + 1
             continue
         weapon = event.get("weapon") or {}
-        if isinstance(weapon, dict) and str(weapon.get("name") or "").casefold() == "operator":
+        weapon_name = str(weapon.get("name") or "").casefold() if isinstance(weapon, dict) else ""
+        if weapon_name == "operator":
             operator[killer] = operator.get(killer, 0) + 1
-        values = loadouts.get(event.get("round", 0) or 0, {})
+        if weapon_name in KNIFE_WEAPONS:
+            knife[killer] = knife.get(killer, 0) + 1
+        round_number = event.get("round", 0) or 0
+        winner = winners.get(round_number)
+        if winner and killer_team and str(killer_team).casefold() != winner:
+            lost_round[killer] = lost_round.get(killer, 0) + 1
+        values = loadouts.get(round_number, {})
         mine, theirs = values.get(killer), values.get(victim)
         # Eco kill: the killer is on a full buy and the victim is on a much cheaper loadout.
         if mine is not None and theirs is not None and mine >= ECO_MIN_KILLER_LOADOUT \
                 and theirs <= mine * ECO_LOADOUT_RATIO:
             eco[killer] = eco.get(killer, 0) + 1
-    return operator, eco, team_kills
+    return operator, eco, team_kills, knife, lost_round
 
 
 def _friendly_fire(player):
@@ -107,7 +127,7 @@ def _build_tracked(detail, queued_players, all_teammates, round_count, kills_per
     deaths_by_round = _deaths_by_round(detail)
     clutch_wins = _clutch_wins(detail, all_teammates)
     plants = _plants(detail)
-    operator_kills, eco_kills, team_kills = _kill_events(detail)
+    operator_kills, eco_kills, team_kills, knife_kills, lost_round_kills = _kill_events(detail)
     teammate_ids = {p.get("puuid") for p in all_teammates}
 
     def team_max(counts):
@@ -125,6 +145,7 @@ def _build_tracked(detail, queued_players, all_teammates, round_count, kills_per
     most_plants = team_max(plants)
     most_eco_kills = team_max(eco_kills)
     most_team_kills = team_max(team_kills)
+    most_lost_round_kills = team_max(lost_round_kills)
     most_friendly_fire = max((_friendly_fire(p) for p in all_teammates), default=0)
     operator_share = {}
     for player in all_teammates:
@@ -167,6 +188,10 @@ def _build_tracked(detail, queued_players, all_teammates, round_count, kills_per
         if highest_hs >= 30 and headshot_rates.get(puuid) == highest_hs: tags.append("DINK MACHINE")
         if lowest_hs <= 15 and headshot_rates.get(puuid) == lowest_hs: tags.append("BODY SHOOTER")
         if most_assists >= 8 and assists_by_id.get(puuid, 0) == most_assists: tags.append("ASSIST KING")
+        if knife_kills.get(puuid, 0):
+            tags.append("KNIFE" if knife_kills[puuid] == 1 else f"KNIFE x{knife_kills[puuid]}")
+        if most_lost_round_kills >= EXIT_FARMER_MIN_KILLS and lost_round_kills.get(puuid, 0) == most_lost_round_kills:
+            tags.append("EXIT FARMER")
         if highest_adr >= 160 and damage_by_id.get(puuid, 0) == highest_adr: tags.append("DAMAGE DEALER")
         if round_count >= 10 and ((st.get("deaths", 0) / round_count) <= 0.45) and st.get("deaths", 0) == lowest_deaths:
             tags.append("SURVIVOR")
