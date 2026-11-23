@@ -3,7 +3,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from commands.context import CommandContext
-from utils.recap_tones import TONE_LABELS
 
 from commands import playbook_handlers
 from commands.playbook_admin import PlaybookAdminView

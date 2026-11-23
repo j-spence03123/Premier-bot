@@ -1,25 +1,18 @@
 import asyncio
 from datetime import datetime, timezone
 import json
-import time
 
 import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
 from config import REGIONS, SETTINGS
-from commands import (install_command_cogs, matchfeed_commands, premier_handlers, player_handlers,
-                      agent_handlers, playbook_handlers, admin_handlers)
+from commands import (install_command_cogs, player_handlers)
 from commands.context import CommandContext
 from commands.recent import recent_scoreboard_view as make_recent_scoreboard_view
-from commands.scoreboard_view import ScoreboardView
-from commands.playbook_views import PlaybookView
-from commands.playbook_admin import PlaybookAdminView
 from graphics.assets import load_icon_image
-from graphics.help_card import render_help_card
 from graphics.lineup import render_lineup_card
 from graphics.match_card import draw_play_result
-from graphics.player_history import render_player_history
 from graphics.playbook_card import render_playbook_card, render_strategy_card
 from graphics.rank_change import draw_rank_change_card
 from graphics.schedule import render_schedule_card
@@ -37,10 +30,8 @@ from services.session_recap import prepare_session_recap
 from services.valorant_api import HenrikDevClient
 from services import weekly_recap
 from utils.formatting import fmt_range, parse_time
-from utils.premier_seasons import extract_premier_seasons
 from utils.queue_schedule import next_queue_start
 from utils.riot_id import split_riot_id
-from utils.stored_matches import parse_stored
 from utils.statistics import summarise_match
 
 TOKEN = SETTINGS.discord_token

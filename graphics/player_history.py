@@ -58,7 +58,7 @@ def render_player_history(name, tag, mode, rows, icons, mmr=None, rank_icon=None
     draw = ImageDraw.Draw(image)
     white, muted, blue, coral = (247, 246, 248), (160, 157, 168), (164, 194, 245), (240, 99, 106)
     green, panel, edge, track = (102, 207, 147), (28, 27, 32), (51, 49, 56), (46, 44, 51)
-    title, body, label, value = match_font(38, True), match_font(19), match_font(14, True), match_font(22, True)
+    title, label, value = match_font(38, True), match_font(14, True), match_font(22, True)
     draw.rectangle((0, 0, width, 7), fill=coral)
 
     # Player panel: rank badge, name, rank with an RR bar, and the act record with a win-rate bar.

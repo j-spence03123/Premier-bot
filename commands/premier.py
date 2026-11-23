@@ -3,7 +3,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from commands.context import CommandContext
-from utils.recap_tones import TONE_LABELS
 
 from commands import premier_handlers
 from utils.premier_seasons import extract_premier_seasons

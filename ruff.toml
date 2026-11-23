@@ -3,5 +3,5 @@ line-length = 120
 extend-exclude = ["assets", "icons"]
 
 [lint]
-# Begin with correctness checks; expand style rules as legacy code is cleaned up.
-select = ["E9", "F63", "F7", "F82"]
+# Correctness checks plus pyflakes (unused imports and variables, undefined names).
+select = ["E9", "F"]

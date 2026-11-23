@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageOps
 
-from graphics.assets import chip_width, draw_result_chip, draw_soft_box, draw_tinted_box, match_font, wrap_image_text
+from graphics.assets import chip_width, draw_result_chip, draw_soft_box, match_font, wrap_image_text
 from services.matchfeed import MATCHFEED_DAY_ZONE
 
 WIDTH, PAD = 1200, 40
