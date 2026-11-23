@@ -110,3 +110,30 @@ def test_weekly_card_draws_awards_section():
     with_awards = Image.open(draw_weekly_recap(week, agent_icons={"jett": Image.new("RGBA", (96, 96), "red")}))
     without = Image.open(draw_weekly_recap({**week, "awards": None}))
     assert with_awards.height > without.height + 600
+
+
+def split_week(rr_shift=0):
+    """Every stat has a different leader, so nobody leads two."""
+    return [
+        player("Devious", 60 + rr_shift, games(9, kd=0.9, acs=190, adr=120, wins=5)),
+        player("TableSalt", 14 + rr_shift, games(8, kd=1.1, acs=200, adr=125, wins=4)),
+        player("kitty", 12 + rr_shift, games(14, kd=1.0, acs=230, adr=128, wins=7)),
+        player("Nice", 4 + rr_shift, games(5, kd=0.95, acs=195, adr=140, wins=2)),
+        player("SOUP", -1 + rr_shift, games(10, kd=0.9, acs=180, adr=110, wins=6)),
+    ]
+
+
+def test_player_of_the_week_falls_back_to_most_rr_without_a_standout():
+    potw = build_awards(split_week())["player_of_the_week"]
+    assert potw["player"] == "Devious" and potw["by_rr"] is True
+    assert potw["line"] == "+60 RR over 9 games, the biggest climb in the squad."
+
+
+def test_rr_fallback_says_smallest_loss_when_nobody_climbed():
+    potw = build_awards(split_week(rr_shift=-70))["player_of_the_week"]
+    assert potw["player"] == "Devious"
+    assert potw["line"].startswith("Nobody climbed this week, but -10 RR")
+
+
+def test_clear_stat_leader_is_not_replaced_by_the_rr_fallback():
+    assert build_awards(squad())["player_of_the_week"]["by_rr"] is False

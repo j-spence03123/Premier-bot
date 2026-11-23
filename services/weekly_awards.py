@@ -8,6 +8,7 @@ still empty-handed. Only main accounts take part.
 from collections import Counter
 
 POTW_MIN_GAMES = 5
+POTW_MIN_LEADS = 2  # leading fewer stats than this hands player of the week to the biggest RR climber
 CAMEO_MAX_GAMES = 3
 TILT_MIN_STREAK = 4
 CLUTCH_ZERO_MIN_CHANCES = 5
@@ -56,7 +57,11 @@ def _value(stats, key):
 
 
 def player_of_the_week(stats):
-    """``(stats, leads)`` for the winner, or None with fewer than two eligible players."""
+    """``(stats, leads, eligible, by_rr)`` for the winner, or None with fewer than two eligible players.
+
+    The winner leads the most stats. If that is fewer than ``POTW_MIN_LEADS``, nobody had a standout week and the
+    award goes to the most RR gained instead (``by_rr`` is then True).
+    """
     eligible = [row for row in stats if row["games"] >= POTW_MIN_GAMES]
     if len(eligible) < 2:
         return None
@@ -69,7 +74,25 @@ def player_of_the_week(stats):
                 leads[id(row)].append(key)
             placing[id(row)] += sum(_value(other, key) > _value(row, key) for other in eligible)
     winner = max(eligible, key=lambda row: (len(leads[id(row)]), -placing[id(row)], row["games"]))
-    return winner, leads[id(winner)], eligible
+    by_rr = False
+    climbers = [row for row in eligible if row["rr"] is not None]
+    if len(leads[id(winner)]) < POTW_MIN_LEADS and climbers:
+        winner = max(climbers, key=lambda row: (row["rr"], -placing[id(row)], row["games"]))
+        by_rr = True
+    return winner, leads[id(winner)], eligible, by_rr
+
+
+def climber_blurb(winner, leads):
+    games = _plural(winner["games"], "game")
+    if winner["rr"] > 0:
+        text = f"{winner['rr']:+d} RR over {games}, the biggest climb in the squad."
+    else:
+        text = f"Nobody climbed this week, but {winner['rr']:+d} RR over {games} was the smallest loss."
+    rest = [noun for key, _, _, noun in POTW_STATS if key in leads and key != "rr"]
+    if rest:
+        text += " Also top of the squad in " + (", ".join(rest[:-1]) + " and " + rest[-1] if len(rest) > 1
+                                                else rest[0]) + "."
+    return text
 
 
 def potw_blurb(winner, leads, eligible):
@@ -179,11 +202,12 @@ def build_awards(players):
     picked = player_of_the_week(stats)
     if not picked:
         return None
-    winner, leads, eligible = picked
+    winner, leads, eligible, by_rr = picked
     return {
         "player_of_the_week": {
             "player": winner["name"], "agent": winner["agent"], "agent_id": winner["agent_id"],
-            "leads": leads, "games": winner["games"], "line": potw_blurb(winner, leads, eligible),
+            "leads": leads, "games": winner["games"], "by_rr": by_rr,
+            "line": climber_blurb(winner, leads) if by_rr else potw_blurb(winner, leads, eligible),
             "stats": [{"key": key, "label": label, "value": "–" if winner[key] is None else fmt(winner[key]),
                        "lead": key in leads} for key, label, fmt, _ in POTW_STATS],
         },

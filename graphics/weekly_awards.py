@@ -91,7 +91,7 @@ def draw_awards(image, y, awards, icons=None):
     _paste_icon(image, draw, _icon(icons, potw), PAD + 22, y + 22, HERO_ICON, edge=GOLD_EDGE)
     _crown(draw, PAD + 22 + (HERO_ICON - 30) // 2, y + 142)
     x = PAD + 160
-    chip = f"LEADS {len(potw['leads'])} OF {len(potw['stats'])} STATS"
+    chip = "TOP CLIMBER" if potw.get("by_rr") else f"LEADS {len(potw['leads'])} OF {len(potw['stats'])} STATS"
     chip_width = int(draw.textlength(chip, font=match_font(14, True))) + 16
     name_font = readable_font(potw["player"], 34, True)
     name = _fit(draw, potw["player"], name_font, width - PAD - 24 - x - chip_width - 16)
