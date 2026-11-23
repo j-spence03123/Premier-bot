@@ -1,3 +1,4 @@
+from collections import Counter
 import io
 from datetime import timezone
 from pathlib import Path
@@ -7,17 +8,22 @@ from PIL import Image, ImageDraw, ImageOps
 
 from .assets import PLAY_TAG_STYLES, chip_width, draw_soft_box, match_font, wrap_image_text
 from utils.formatting import parse_time
-from utils.match_summary import _clutch_wins, _deaths_by_round, _play_headline, _play_recap
+from utils.match_summary import _clutch_rounds, _deaths_by_round, _play_headline, _play_recap
 
 
 # Tags every eligible player keeps, even when a teammate earned the same one.
-SHARED_TAGS = {"ACE", "CLUTCH", "VICTIM", "KNIFE"}
+SHARED_TAGS = {"ACE", "CLUTCH", "VICTIM", "KNIFE", "KNIFED", "AFK"}
 OPERATOR_MIN_KILLS = 6
 EXIT_FARMER_MIN_KILLS = 6
 KNIFE_WEAPONS = {"knife", "melee"}
 ECO_LOADOUT_RATIO = 0.5
 ECO_MIN_KILLER_LOADOUT = 2500
 PASSENGER_SCORE_RATIO = 0.8
+TRADE_WINDOW_MS = 3000
+DIED_ALONE_MIN_DEATHS = 6
+HUMBLED_MIN_DEATHS = 5
+CHOKED_MIN_LOSSES = 4
+TOURIST_IDLE_SHARE = 0.6
 
 
 def _tag_key(tag):
@@ -117,6 +123,49 @@ def _kill_events(detail):
     return operator, eco, team_kills, knife, lost_round
 
 
+def _roast_events(detail, teammate_ids):
+    """Per-teammate counts behind the roast tags.
+
+    Returns (knifed, humbled, untraded, involved): times knifed by an enemy, most deaths to one enemy,
+    deaths no teammate traded within TRADE_WINDOW_MS, and the rounds each player got a kill or an assist in.
+    """
+    knifed, deaths_by_enemy, untraded, involved = {}, {}, {}, {}
+    by_round = {}
+    for event in detail.get("kills") or []:
+        by_round.setdefault(event.get("round", 0) or 0, []).append(event)
+    for number, events in by_round.items():
+        for event in events:
+            killer = (event.get("killer") or {}).get("puuid")
+            victim = (event.get("victim") or {}).get("puuid")
+            if killer in teammate_ids and victim and victim not in teammate_ids:
+                involved.setdefault(killer, set()).add(number)
+            for helper in event.get("assistants") or []:
+                helper_id = helper.get("puuid") if isinstance(helper, dict) else None
+                if helper_id in teammate_ids:
+                    involved.setdefault(helper_id, set()).add(number)
+            if victim in teammate_ids and killer and killer not in teammate_ids:
+                deaths_by_enemy.setdefault(victim, Counter())[killer] += 1
+                weapon = event.get("weapon") or {}
+                if isinstance(weapon, dict) and str(weapon.get("name") or "").casefold() in KNIFE_WEAPONS:
+                    knifed[victim] = knifed.get(victim, 0) + 1
+        timed = sorted((event for event in events if isinstance(event.get("time_in_round_in_ms"), (int, float))),
+                       key=lambda event: event["time_in_round_in_ms"])
+        for index, event in enumerate(timed):
+            killer = (event.get("killer") or {}).get("puuid")
+            victim = (event.get("victim") or {}).get("puuid")
+            if victim not in teammate_ids or not killer or killer in teammate_ids:
+                continue
+            deadline = event["time_in_round_in_ms"] + TRADE_WINDOW_MS
+            traded = any((later.get("victim") or {}).get("puuid") == killer
+                         and (later.get("killer") or {}).get("puuid") in teammate_ids
+                         and later["time_in_round_in_ms"] <= deadline
+                         for later in timed[index + 1:])
+            if not traded:
+                untraded[victim] = untraded.get(victim, 0) + 1
+    humbled = {puuid: max(counts.values()) for puuid, counts in deaths_by_enemy.items()}
+    return knifed, humbled, untraded, involved
+
+
 def _friendly_fire(player):
     return ((player.get("behavior") or {}).get("friendly_fire") or {}).get("outgoing") or 0
 
@@ -125,13 +174,19 @@ def _build_tracked(detail, queued_players, all_teammates, round_count, kills_per
                    first_bloods, first_deaths, top_score, low_score):
     """Work out each queued player's stat line and the tags they earned this match."""
     deaths_by_round = _deaths_by_round(detail)
-    clutch_wins = _clutch_wins(detail, all_teammates)
+    clutch_wins, clutch_losses = _clutch_rounds(detail, all_teammates)
     plants = _plants(detail)
     operator_kills, eco_kills, team_kills, knife_kills, lost_round_kills = _kill_events(detail)
     teammate_ids = {p.get("puuid") for p in all_teammates}
 
     def team_max(counts):
         return max((counts.get(puuid, 0) for puuid in teammate_ids), default=0)
+
+    knifed, humbled, untraded, involved = _roast_events(detail, teammate_ids)
+    most_humbled, most_untraded, most_choked = team_max(humbled), team_max(untraded), team_max(clutch_losses)
+    # Rounds with no kill or assist. Only meaningful when kill events name at least one teammate.
+    idle = {puuid: round_count - len(involved.get(puuid, ())) for puuid in teammate_ids} if involved else {}
+    most_idle = max(idle.values(), default=0)
 
     assists_by_id = {p.get("puuid"): (p.get("stats") or {}).get("assists", 0) for p in all_teammates}
     damage_by_id = {
@@ -200,6 +255,18 @@ def _build_tracked(detail, queued_players, all_teammates, round_count, kills_per
         death_rounds = sum(1 for events in deaths_by_round.values() if events.get(puuid, 0) > 0)
         if round_count > 0 and death_rounds >= round_count: tags.append("VICTIM")
         if low_score is not None and st.get("score", 0) == low_score: tags.append("LVP")
+        if knifed.get(puuid, 0):
+            tags.append("KNIFED" if knifed[puuid] == 1 else f"KNIFED x{knifed[puuid]}")
+        if most_humbled >= HUMBLED_MIN_DEATHS and humbled.get(puuid, 0) == most_humbled: tags.append("HUMBLED")
+        if most_untraded >= DIED_ALONE_MIN_DEATHS and untraded.get(puuid, 0) == most_untraded:
+            tags.append("DIED ALONE")
+        if (most_choked >= CHOKED_MIN_LOSSES and clutch_losses.get(puuid, 0) == most_choked
+                and not clutch_wins.get(puuid)):
+            tags.append("CHOKED")
+        if round_count >= 10 and most_idle >= TOURIST_IDLE_SHARE * round_count and idle.get(puuid) == most_idle:
+            tags.append("TOURIST")
+        afk_rounds = (p.get("behavior") or {}).get("afk_rounds")
+        if isinstance(afk_rounds, (int, float)) and afk_rounds >= 1: tags.append("AFK")
         tracked.append({"p": p, "st": st, "hs": hs, "tags": tags,
                         "fb": first_bloods.get(puuid, 0), "fd": first_deaths.get(puuid, 0),
                         "adr": damage_by_id.get(puuid, 0)})

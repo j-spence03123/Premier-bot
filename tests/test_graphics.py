@@ -140,7 +140,8 @@ def test_knife_tag_is_shared_and_counts_multiple_knife_kills():
 
     assert "KNIFE x2" in tags["Red-0"]
     assert "KNIFE" in tags["Red-3"]
-    assert not any(tag.startswith("KNIFE") for tag in tags["Red-4"])
+    assert not any(tag == "KNIFE" or tag.startswith("KNIFE x") for tag in tags["Red-4"])
+    assert "KNIFED" in tags["Red-4"]  # knifed by Blue-0
 
 
 def test_exit_farmer_goes_to_most_kills_in_lost_rounds():
@@ -356,3 +357,83 @@ def test_match_card_adds_round_strip_when_rounds_match_the_score():
     detail["rounds"][19]["winning_team"] = "Blue"  # 13 won, 8 lost, final round won
     _, strip_height = _png_size(draw_play_result(detail, players, players, players[0], None))
     assert strip_height == plain_height + ROUND_STRIP_HEIGHT
+
+
+def _roast_lobby():
+    return [_tag_player(i) for i in range(5)], [_tag_player(i, team="Blue") for i in range(5)]
+
+
+def test_knifed_is_shared_by_everyone_an_enemy_knifes():
+    players, enemies = _roast_lobby()
+    kills = [_kill(0, "Blue-0", "Red-1", weapon="Melee"), _kill(1, "Blue-2", "Red-3", weapon="Knife"),
+             _kill(2, "Blue-2", "Red-3", weapon="Melee")]
+
+    tags = _tags_for(players, enemies, kills)
+
+    assert "KNIFED" in tags["Red-1"]
+    assert "KNIFED x2" in tags["Red-3"]
+
+
+def test_humbled_needs_five_deaths_to_the_same_enemy():
+    players, enemies = _roast_lobby()
+    kills = [_kill(r, "Blue-0", "Red-2") for r in range(5)] + [_kill(r, "Blue-1", "Red-4") for r in range(5, 9)]
+
+    tags = _tags_for(players, enemies, kills)
+
+    assert "HUMBLED" in tags["Red-2"]
+    assert "HUMBLED" not in tags["Red-4"]
+
+
+def test_died_alone_counts_deaths_that_no_teammate_traded():
+    players, enemies = _roast_lobby()
+    kills = []
+    for r in range(6):
+        kills.append(_kill(r, "Blue-0", "Red-4", time=10_000))
+        kills.append(_kill(r, "Blue-1", "Red-1", time=20_000))
+        kills.append(_kill(r, "Red-0", "Blue-1", time=21_500))  # Red-1's killer dies 1.5s later: traded
+
+    tags = _tags_for(players, enemies, kills)
+
+    assert "DIED ALONE" in tags["Red-4"]
+    assert "DIED ALONE" not in tags["Red-1"]
+
+
+def test_choked_goes_to_the_last_player_alive_in_lost_rounds():
+    players, enemies = _roast_lobby()
+    kills, rounds = [], []
+    for r in range(4):
+        kills += [_kill(r, "Blue-0", f"Red-{i}", time=1_000 * (n + 1)) for n, i in enumerate((0, 1, 3, 4, 2))]
+        rounds.append({"id": r, "winning_team": "Blue"})
+
+    tags = _tags_for(players, enemies, kills, rounds)
+
+    assert "CHOKED" in tags["Red-2"]
+
+
+def test_tourist_counts_rounds_without_a_kill_or_assist():
+    players, enemies = _roast_lobby()
+    kills = [_kill(r, f"Red-{i}", f"Blue-{i}", time=10_000 + i) for r in range(20) for i in range(4)]
+    kills += [_kill(r, "Red-4", "Blue-4", time=30_000) for r in range(5)]
+
+    tags = _tags_for(players, enemies, kills)
+    assert "TOURIST" in tags["Red-4"]
+    assert not any("TOURIST" in tags[f"Red-{i}"] for i in range(4))
+
+    assists = [dict(_kill(r, "Red-0", "Blue-0", time=40_000), assistants=[{"puuid": "Red-4"}]) for r in range(5, 15)]
+    assert "TOURIST" not in _tags_for(players, enemies, kills + assists)["Red-4"]
+
+
+def test_tourist_is_not_guessed_without_kill_events():
+    players, enemies = _roast_lobby()
+
+    assert not any("TOURIST" in tags for tags in _tags_for(players, enemies).values())
+
+
+def test_afk_tag_uses_afk_rounds_from_behaviour():
+    players, enemies = _roast_lobby()
+    players[3]["behavior"]["afk_rounds"] = 2
+
+    tags = _tags_for(players, enemies)
+
+    assert "AFK" in tags["Red-3"]
+    assert not any("AFK" in tags[f"Red-{i}"] for i in (0, 1, 2, 4))

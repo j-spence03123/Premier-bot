@@ -60,6 +60,18 @@ def _play_recap(map_name, won, our_score, their_score, tracked, all_teammates, d
                 events.append(f"{name} put up {item['adr']} ADR and kept the damage numbers employed")
             elif tag == "SURVIVOR":
                 events.append(f"{name} only went down {item['st'].get('deaths', 0)} times and stayed out of the respawn queue")
+            elif tag.startswith("KNIFED"):
+                events.append(f"{name} got knifed, which will be in the group chat by morning")
+            elif tag == "HUMBLED":
+                events.append(f"{name} kept running into the same enemy and losing every time")
+            elif tag == "DIED ALONE":
+                events.append(f"{name} kept dying where nobody could trade")
+            elif tag == "CHOKED":
+                events.append(f"{name} was left alone with the round on the line and fumbled it every time")
+            elif tag == "TOURIST":
+                events.append(f"{name} spent most rounds sightseeing")
+            elif tag == "AFK":
+                events.append(f"{name} was AFK for part of the match")
             elif tag.startswith("KNIFE"):
                 events.append(f"{name} got a knife kill and will be replaying it all week")
             elif tag == "EXIT FARMER":
@@ -180,17 +192,22 @@ def _deaths_by_round(detail):
 
 def _clutch_wins(detail, players):
     """Count won rounds where a player was left alone against at least two opponents."""
+    return _clutch_rounds(detail, players)[0]
+
+
+def _clutch_rounds(detail, players):
+    """Per player, (rounds won, rounds lost) after being left alone against at least two opponents."""
     roster = detail.get("players") or players
     team_by_puuid = {p.get("puuid"): p.get("team_id") for p in roster if p.get("puuid") and p.get("team_id")}
     members_by_team = {}
     for puuid, team_id in team_by_puuid.items():
         members_by_team.setdefault(team_id, set()).add(puuid)
     if len(members_by_team) < 2:
-        return {}
+        return {}, {}
     kills_by_round = {}
     for event in detail.get("kills") or []:
         kills_by_round.setdefault(event.get("round", 0) or 0, []).append(event)
-    clutch_counts = {}
+    clutch_counts, clutch_losses = {}, {}
     for index, round_data in enumerate(detail.get("rounds") or []):
         round_number = round_data.get("id", index)
         winner_text = str(round_data.get("winning_team") or "").casefold()
@@ -212,4 +229,6 @@ def _clutch_wins(detail, players):
         for puuid in possible_clutchers:
             if team_by_puuid.get(puuid) == winner and puuid in alive.get(winner, set()):
                 clutch_counts[puuid] = clutch_counts.get(puuid, 0) + 1
-    return clutch_counts
+            elif team_by_puuid.get(puuid) != winner:
+                clutch_losses[puuid] = clutch_losses.get(puuid, 0) + 1
+    return clutch_counts, clutch_losses
