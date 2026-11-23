@@ -64,6 +64,10 @@ def _play_recap(map_name, won, our_score, their_score, tracked, all_teammates, d
                 events.append(f"{name} got knifed, which will be in the group chat by morning")
             elif tag == "CHOKER":
                 events.append(f"{name} was left alone with the round on the line and fumbled it every time")
+            elif tag == "KILL STEALER":
+                events.append(f"{name} kept finishing off enemies the rest of the team had already softened up")
+            elif tag == "MARTYR":
+                events.append(f"{name} kept dying first in rounds the team went on to win")
             elif tag == "TOURIST":
                 events.append(f"{name} spent most rounds sightseeing")
             elif tag == "AFK":

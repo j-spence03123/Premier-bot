@@ -413,3 +413,32 @@ def test_afk_tag_uses_afk_rounds_from_behaviour():
 
     assert "AFK" in tags["Red-3"]
     assert not any("AFK" in tags[f"Red-{i}"] for i in (0, 1, 2, 4))
+
+
+def test_kill_stealer_needs_two_other_teammates_on_the_assist():
+    players, enemies = _roast_lobby()
+    kills = [dict(_kill(r, "Red-1", f"Blue-{r % 5}"), assistants=[{"puuid": "Red-0"}, {"puuid": "Red-2"}])
+             for r in range(4)]
+    kills += [dict(_kill(r, "Red-3", f"Blue-{r % 5}"), assistants=[{"puuid": "Red-0"}, {"puuid": "Red-3"}])
+              for r in range(4, 9)]
+
+    tags = _tags_for(players, enemies, kills)
+
+    assert "KILL STEALER" in tags["Red-1"]
+    assert "KILL STEALER" not in tags["Red-3"]  # only one other teammate assisted
+
+
+def test_martyr_counts_first_deaths_in_rounds_the_team_won():
+    players, enemies = _roast_lobby()
+    kills, rounds = [], []
+    for r in range(5):
+        victim = "Red-2" if r < 3 else "Red-4"
+        kills += [_kill(r, "Blue-0", victim, time=5_000), _kill(r, "Red-0", "Blue-0", time=9_000)]
+        rounds.append({"id": r, "winning_team": "Red" if r < 3 else "Blue"})
+    kills += [_kill(r, "Blue-1", "Red-4", time=5_000) for r in range(5, 8)]  # first deaths in lost rounds
+    rounds += [{"id": r, "winning_team": "Blue"} for r in range(5, 8)]
+
+    tags = _tags_for(players, enemies, kills, rounds)
+
+    assert "MARTYR" in tags["Red-2"]
+    assert "MARTYR" not in tags["Red-4"]

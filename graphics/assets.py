@@ -48,11 +48,13 @@ PLAY_TAG_STYLES = {
     "DINK MACHINE": ((50, 104, 39), (156, 238, 139)),   # fresh green
     "OPERATOR": ((39, 98, 104), (139, 230, 238)),       # cyan
     "PLANTER": ((50, 93, 79), (156, 222, 200)),         # sage
+    "MARTYR": ((84, 80, 66), (236, 228, 196)),          # halo ivory
     # Purple: cheeky
     "ECO FRAUD": ((77, 39, 104), (197, 139, 238)),      # purple
     "EXIT FARMER": ((55, 39, 104), (164, 139, 238)),    # indigo
     "BODY SHOOTER": ((98, 39, 104), (230, 139, 238)),   # orchid
     "PASSENGER": ((56, 56, 86), (165, 165, 212)),       # dusty lavender
+    "KILL STEALER": ((110, 30, 80), (255, 130, 200)),   # hot pink
     # Red: roasts
     "BAITED": ((104, 39, 55), (238, 139, 164)),         # rose
     "LVP": ((104, 39, 39), (238, 139, 139)),            # red

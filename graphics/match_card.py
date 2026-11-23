@@ -19,6 +19,8 @@ ECO_LOADOUT_RATIO = 0.5
 ECO_MIN_KILLER_LOADOUT = 2500
 PASSENGER_SCORE_RATIO = 0.8
 CHOKER_MIN_LOSSES = 4
+KILL_STEALER_MIN_KILLS = 4
+MARTYR_MIN_ROUNDS = 3
 TOURIST_IDLE_SHARE = 0.6
 
 
@@ -120,26 +122,40 @@ def _kill_events(detail):
 
 
 def _roast_events(detail, teammate_ids):
-    """Per-teammate counts behind the roast tags.
+    """Per-teammate counts behind the KNIFED, TOURIST, KILL STEALER and MARTYR tags.
 
-    Returns (knifed, involved): times knifed by an enemy, and the rounds each player got a kill or an assist in.
+    ``knifed``: times knifed by an enemy. ``involved``: rounds with a kill or an assist. ``stolen``: kills
+    that two or more other teammates assisted on. ``martyr``: rounds they died first and the team still won.
     """
-    knifed, involved = {}, {}
+    team_by_puuid = {p.get("puuid"): p.get("team_id") for p in detail.get("players") or [] if p.get("puuid")}
+    winners = _round_winners(detail)
+    counts = {"knifed": {}, "involved": {}, "stolen": {}, "martyr": {}}
+    by_round = {}
     for event in detail.get("kills") or []:
         number = event.get("round", 0) or 0
+        by_round.setdefault(number, []).append(event)
         killer = (event.get("killer") or {}).get("puuid")
         victim = (event.get("victim") or {}).get("puuid")
+        helpers = {helper.get("puuid") for helper in event.get("assistants") or [] if isinstance(helper, dict)}
+        helpers &= teammate_ids
+        for helper in helpers:
+            counts["involved"].setdefault(helper, set()).add(number)
         if killer in teammate_ids and victim and victim not in teammate_ids:
-            involved.setdefault(killer, set()).add(number)
-        for helper in event.get("assistants") or []:
-            helper_id = helper.get("puuid") if isinstance(helper, dict) else None
-            if helper_id in teammate_ids:
-                involved.setdefault(helper_id, set()).add(number)
+            counts["involved"].setdefault(killer, set()).add(number)
+            if len(helpers - {killer}) >= 2:
+                counts["stolen"][killer] = counts["stolen"].get(killer, 0) + 1
         if victim in teammate_ids and killer and killer not in teammate_ids:
             weapon = event.get("weapon") or {}
             if isinstance(weapon, dict) and str(weapon.get("name") or "").casefold() in KNIFE_WEAPONS:
-                knifed[victim] = knifed.get(victim, 0) + 1
-    return knifed, involved
+                counts["knifed"][victim] = counts["knifed"].get(victim, 0) + 1
+    for number, events in by_round.items():
+        if not all(isinstance(event.get("time_in_round_in_ms"), (int, float)) for event in events):
+            continue
+        first = min(events, key=lambda event: event["time_in_round_in_ms"])
+        victim = (first.get("victim") or {}).get("puuid")
+        if victim in teammate_ids and winners.get(number) == str(team_by_puuid.get(victim) or "").casefold():
+            counts["martyr"][victim] = counts["martyr"].get(victim, 0) + 1
+    return counts
 
 
 def _friendly_fire(player):
@@ -158,8 +174,9 @@ def _build_tracked(detail, queued_players, all_teammates, round_count, kills_per
     def team_max(counts):
         return max((counts.get(puuid, 0) for puuid in teammate_ids), default=0)
 
-    knifed, involved = _roast_events(detail, teammate_ids)
-    most_clutch_losses = team_max(clutch_losses)
+    roast = _roast_events(detail, teammate_ids)
+    knifed, involved, stolen, martyr = roast["knifed"], roast["involved"], roast["stolen"], roast["martyr"]
+    most_clutch_losses, most_stolen, most_martyr = team_max(clutch_losses), team_max(stolen), team_max(martyr)
     # Rounds with no kill or assist. Only meaningful when kill events name at least one teammate.
     idle = {puuid: round_count - len(involved.get(puuid, ())) for puuid in teammate_ids} if involved else {}
     most_idle = max(idle.values(), default=0)
@@ -238,6 +255,8 @@ def _build_tracked(detail, queued_players, all_teammates, round_count, kills_per
             tags.append("CHOKER")
         if round_count >= 10 and most_idle >= TOURIST_IDLE_SHARE * round_count and idle.get(puuid) == most_idle:
             tags.append("TOURIST")
+        if most_stolen >= KILL_STEALER_MIN_KILLS and stolen.get(puuid, 0) == most_stolen: tags.append("KILL STEALER")
+        if most_martyr >= MARTYR_MIN_ROUNDS and martyr.get(puuid, 0) == most_martyr: tags.append("MARTYR")
         afk_rounds = (p.get("behavior") or {}).get("afk_rounds")
         if isinstance(afk_rounds, (int, float)) and afk_rounds >= 1: tags.append("AFK")
         tracked.append({"p": p, "st": st, "hs": hs, "tags": tags,
