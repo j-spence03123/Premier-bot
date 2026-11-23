@@ -2,7 +2,7 @@
 
 import discord
 
-from utils.formatting import parse_time
+from utils.formatting import parse_time, uk_time
 
 
 class ScoreboardView(discord.ui.View):
@@ -19,7 +19,7 @@ class ScoreboardView(discord.ui.View):
             options.append(
                 discord.SelectOption(
                     label=f"{'WIN' if s['won'] else 'LOSS'} {s['score']} on {s['map']}"[:100],
-                    description=d.strftime("%d %b %H:%M UTC") if d else None,
+                    description=uk_time(d).strftime("%d %b %H:%M UK") if d else None,
                     value=str(i),
                 )
             )

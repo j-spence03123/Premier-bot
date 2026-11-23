@@ -4,9 +4,10 @@ from datetime import datetime, timedelta
 from copy import deepcopy
 from hashlib import sha256
 import json
-from zoneinfo import ZoneInfo
 
-MATCHFEED_DAY_ZONE = ZoneInfo("Europe/London")
+from utils.formatting import UK_ZONE
+
+MATCHFEED_DAY_ZONE = UK_ZONE
 SESSION_IDLE_LIMIT = timedelta(hours=1)
 ORDINAL_WORDS = ("First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth", "Tenth")
 

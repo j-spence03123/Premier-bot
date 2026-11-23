@@ -1,6 +1,5 @@
 """Render the /recent match scoreboard in the matchfeed style."""
 
-from datetime import timezone
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageOps
@@ -11,7 +10,7 @@ from .round_strip import ROUND_STRIP_HEIGHT, draw_round_strip, round_results
 # Header bar colours for each side: (fill, text). Won rounds use ours, lost rounds theirs.
 YOUR_TEAM = ((33, 72, 59), (153, 224, 185))
 OPPONENTS = ((75, 38, 46), (244, 151, 158))
-from utils.formatting import parse_time
+from utils.formatting import parse_time, uk_time
 from utils.recent_scoreboard import build_scoreboard
 
 
@@ -44,7 +43,7 @@ def render_recent_scoreboard(detail, target, period, map_path, agent_icons, rank
     meta = detail.get("metadata") or {}
     map_name = (meta.get("map") or {}).get("name", "Unknown")
     started = parse_time(meta.get("started_at"))
-    date = started.astimezone(timezone.utc).strftime("%b %d, %Y, %H:%M UTC") if started else "Time unavailable"
+    date = uk_time(started).strftime("%a %d %b %Y, %H:%M UK") if started else "Time unavailable"
     duration = meta.get("game_length_in_ms") or 0
     draw.text((pad, 142), map_name.upper(), font=match_font(56, True), fill=(250, 250, 252), anchor="lm")
     draw.text((pad, 205), f"Competitive · {duration // 60000} min · {date}" if duration else f"Competitive · {date}",

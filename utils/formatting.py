@@ -1,6 +1,9 @@
 """Formatting helpers shared by bot commands and renderers."""
 
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+UK_ZONE = ZoneInfo("Europe/London")
 
 
 def parse_time(value):
@@ -20,3 +23,10 @@ def fmt_range(start, end):
     if first.month == last.month:
         return f"{first:%b} {first.day}\u2013{last.day}"
     return f"{first:%b} {first.day} \u2013 {last:%b} {last.day}"
+
+
+def uk_time(moment):
+    """A datetime in UK time (GMT or BST); naive datetimes are treated as UTC."""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(UK_ZONE)

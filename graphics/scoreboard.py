@@ -1,10 +1,9 @@
 import io
-from datetime import timezone
 
 from PIL import Image, ImageDraw
 
 from .assets import COLS, GREY, WHITE, chip_width, draw_result_chip, font
-from utils.formatting import parse_time
+from utils.formatting import parse_time, uk_time
 
 
 def draw_scoreboard(s, icons):
@@ -21,7 +20,7 @@ def draw_scoreboard(s, icons):
     d = ImageDraw.Draw(img)
     d.text((W // 2, 46), f"{s['rw']} : {s['rl']}", font=font(42, True), fill=WHITE, anchor="mm")
     started = parse_time(s.get("started"))
-    sub = s["map"] + (started.astimezone(timezone.utc).strftime("  \u2022  %d %b %Y %H:%M UTC") if started else "")
+    sub = s["map"] + (uk_time(started).strftime("  \u2022  %d %b %Y %H:%M UK") if started else "")
     d.text((W - 24, 48), sub, font=font(18), fill=(190, 200, 210), anchor="rm")
 
     f_name, f_tag, f_val, f_lab = font(17, True), font(13), font(16), font(13, True)

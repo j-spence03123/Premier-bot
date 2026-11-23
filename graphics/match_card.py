@@ -1,12 +1,11 @@
 import io
-from datetime import timezone
 from pathlib import Path
 import re
 
 from PIL import Image, ImageDraw, ImageOps
 
 from .assets import PLAY_TAG_STYLES, chip_width, draw_soft_box, match_font, wrap_image_text
-from utils.formatting import parse_time
+from utils.formatting import parse_time, uk_time
 from utils.match_summary import _clutch_rounds, _deaths_by_round, _play_headline, _play_recap
 
 
@@ -412,8 +411,7 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     f_sub = match_font(19)
     draw.text((side_pad, 169), map_name.upper(), font=match_font(56, True), fill=(250, 250, 252), anchor="lm")
     if started:
-        match_time = started.astimezone(timezone.utc)
-        date_label = f"{match_time.strftime('%b %d, %Y, ')}{match_time.strftime('%I').lstrip('0')}:{match_time.strftime('%M:%S %p')}"
+        date_label = uk_time(started).strftime("%a %d %b %Y, %H:%M UK")
     else:
         date_label = "Time unavailable"
     draw.text((side_pad, 224), f"Competitive · {duration} · {date_label}", font=f_sub, fill=(207, 205, 210), anchor="lm")

@@ -1,21 +1,19 @@
 """Render recent player matches in the matchfeed visual style."""
 
-from datetime import timezone
 import re
 
 from PIL import Image, ImageDraw, ImageOps
 
 from .assets import draw_result_chip, draw_result_glow, encode_png, match_font
-from utils.formatting import parse_time
+from utils.formatting import parse_time, uk_time
 
 
 def _date_and_time(value):
     parsed = parse_time(value)
     if not parsed:
         return "DATE UNKNOWN", "Time unavailable"
-    if parsed.tzinfo:
-        parsed = parsed.astimezone(timezone.utc)
-    return parsed.strftime("%b %d, %Y").upper(), parsed.strftime("%H:%M UTC")
+    parsed = uk_time(parsed)
+    return parsed.strftime("%b %d, %Y").upper(), parsed.strftime("%H:%M UK")
 
 
 def _fit(draw, text, font, width):
