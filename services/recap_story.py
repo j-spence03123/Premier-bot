@@ -422,6 +422,10 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
     if halves:
         (h1w, h1l), (h2w, h2l) = halves["first_half"], halves["second_half"]
         lines.append(f"HALVES: first half {h1w}-{h1l}, second half {h2w}-{h2l}")
+    rated = [name for name in players if players[name].get("acs") is not None]
+    if len(rated) >= 2:
+        best = max(rated, key=lambda name: players[name]["acs"])
+        lines.append(f"SQUAD_BEST: {best} had the highest ACS in the squad ({players[best]['acs']})")
     if featured:
         lines.append("FEATURED:")
     angle_text = " ".join(angles)
@@ -505,6 +509,26 @@ def numbers_in(text, exempt=()):
     return found
 
 
+_GENDERED = re.compile(r"\b(he|him|his|himself|she|her|hers|herself)\b", re.IGNORECASE)
+_CARRY = re.compile(r"\b(carr(?:y|ies|ied|ying)|MVP|best player|top fragg?(?:er|ed|ing))\b", re.IGNORECASE)
+
+
+def _carry_problems(text, packet, names):
+    """Only the SQUAD_BEST player may be called the carry or the MVP."""
+    best = re.search(r"^SQUAD_BEST: (.+?) had the highest ACS", packet, re.MULTILINE)
+    if not best:
+        return []
+    best = best.group(1)
+    problems = []
+    for sentence in re.split(r"(?<=[.!?])\s+|,\s+(?=[A-Z])", text):
+        if not _CARRY.search(sentence):
+            continue
+        named = [n for n in names if re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", sentence, re.IGNORECASE)]
+        if named and best not in named:
+            problems.append(f"called {', '.join(sorted(named))} the carry; only {best} (SQUAD_BEST) can be")
+    return problems
+
+
 def validate_recap(output, packet, *, names=(), other_names=(), labels=(), agents=None):
     """Return ``(recap, problems)``. ``recap`` is None when any check fails."""
     if not isinstance(output, dict):
@@ -526,6 +550,9 @@ def validate_recap(output, packet, *, names=(), other_names=(), labels=(), agent
     if invented:
         shown = ", ".join(f"{n:g}" for n in invented)
         problems.append(f"numbers not in FACTS: {shown}")
+    if _GENDERED.search(body):
+        problems.append("used he/she/his/her; refer to players by name or 'they'")
+    problems += _carry_problems(f"{headline}. {body}", packet, names)
     unbacked = _unbacked_groups(f"{headline} {body}", packet)
     if unbacked:
         problems.append("scores or stat lines not in FACTS: " + ", ".join(unbacked))

@@ -254,3 +254,21 @@ def test_validator_rejects_score_pairs_that_are_not_in_the_facts():
     assert validate_recap(good, packet, names={"Player2"})[1] == []
     invented = dict(good, body="Player2 traded first bloods 7-8 with the enemy in an 8-13 loss." + padding)
     assert "scores or stat lines not in FACTS: 7-8" in validate_recap(invented, packet, names={"Player2"})[1]
+
+
+def test_only_the_squad_best_player_can_be_called_the_carry():
+    packet = ("RESULT: Victory 13-11 on Summit\nSQUAD_BEST: Sugoicore had the highest ACS in the squad (250)\n"
+              "FEATURED:\n- Sugoicore (Yoru): 20/16/8\n- Soup (Clove): 16/15/8")
+    padding = " Nothing else here carries a figure at all, which is exactly the point of this padding." * 7
+    names = {"Sugoicore", "Soup"}
+    wrong = {"headline": "sugoicore choked, soup carried", "body": "Sugoicore went 20/16/8 in a 13-11 win." + padding}
+    assert "called Soup the carry; only Sugoicore (SQUAD_BEST) can be" in validate_recap(wrong, packet, names=names)[1]
+    right = {"headline": "sugoicore carried summit", "body": "Sugoicore went 20/16/8 in a 13-11 win." + padding}
+    assert validate_recap(right, packet, names=names)[1] == []
+
+
+def test_validator_rejects_gendered_pronouns():
+    packet = "RESULT: Victory 13-11 on Summit\nFEATURED:\n- Soup (Clove): 16/15/8"
+    padding = " Nothing else here carries a figure at all, which is exactly the point of this padding." * 7
+    answer = {"headline": "soup on summit", "body": "Soup went 16/15/8 and his Clove held B." + padding}
+    assert "used he/she/his/her; refer to players by name or 'they'" in validate_recap(answer, packet, names={"Soup"})[1]

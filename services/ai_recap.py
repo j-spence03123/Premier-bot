@@ -356,6 +356,7 @@ retell the game. It must read like a story with a turn in it, not a scoreboard.
   only as "the enemy <agent>"), TOP_ENEMY going off, RANK stakes,
   how many games the squad has played TOGETHER. Use up to two of these on top of STORY_ANGLE; never list them.
 - The recap is about the squad. Mention an enemy at most once, and only when it's part of the story.
+- Only the SQUAD_BEST player can be called the carry, the MVP or the best player. Never say anyone else carried.
 - Every joke must make literal sense for what happened, ideally using VALORANT itself (the agent's kit, the
   map, eco rounds, the Operator, the respawn screen). If a line sounds clever but you couldn't say what it
   means, cut it. Don't reuse the examples' jokes or phrases.
