@@ -1,3 +1,4 @@
+import logging
 import asyncio
 from datetime import datetime, timezone
 import json
@@ -33,6 +34,8 @@ from utils.formatting import fmt_range, parse_time
 from utils.queue_schedule import next_queue_start
 from utils.riot_id import split_riot_id
 from utils.statistics import summarise_match
+
+logger = logging.getLogger(__name__)
 
 TOKEN = SETTINGS.discord_token
 HENRIK_KEY = SETTINGS.henrik_api_key
@@ -72,7 +75,7 @@ class BotClient(commands.Bot):
         await super().setup_hook()
         removed = state.remove_duplicate_accounts()
         if removed:
-            print(f"Removed {len(removed)} duplicate account registration(s); a backup was saved.")
+            logger.info(f"Removed {len(removed)} duplicate account registration(s); a backup was saved.")
         if not self._command_cogs_loaded:
             await install_command_cogs(self, make_command_context())
             self._command_cogs_loaded = True
@@ -578,7 +581,7 @@ async def warm_icon_cache():
     try:
         await icon_maps()
     except Exception as exc:
-        print(f"Could not warm icon cache: {exc}")
+        logger.warning(f"Could not warm icon cache: {exc}")
     else:
         client._icons_warmed = True
 
@@ -595,9 +598,10 @@ async def on_ready():
         client._commands_synced = True
     if not client._icons_warmed and (client._icon_warm_task is None or client._icon_warm_task.done()):
         client._icon_warm_task = asyncio.create_task(warm_icon_cache(), name="warm-icon-cache")
-    print(f"Logged in as {client.user}")
-    print("Team lookup:", f"ID {TEAM_ID}" if TEAM_ID else f"name {TEAM_NAME}#{TEAM_TAG}")
+    logger.info(f"Logged in as {client.user}")
+    logger.info("Team lookup: %s", f"ID {TEAM_ID}" if TEAM_ID else f"name {TEAM_NAME}#{TEAM_TAG}")
 
 
 if __name__ == "__main__":
-    client.run(TOKEN)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    client.run(TOKEN, log_handler=None)  # discord.py logs through the root config above

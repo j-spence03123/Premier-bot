@@ -1,8 +1,11 @@
 """Feature helpers with explicitly supplied application dependencies."""
+import logging
 import asyncio
 from datetime import datetime
 import discord
 from datetime import timezone
+
+logger = logging.getLogger(__name__)
 
 async def agent_names(*, FALLBACK_AGENTS, icon_maps):
     try:
@@ -89,7 +92,7 @@ async def lineup_card_file(map_name, week_label, slots, *, icon_img, icon_maps, 
         loaded_icons = await asyncio.gather(*icon_jobs.values()) if icon_jobs else []
         agent_icons = dict(zip(icon_jobs.keys(), loaded_icons))
     except Exception as exc:
-        print(f'Lineup agent icons unavailable: {exc}')
+        logger.warning(f'Lineup agent icons unavailable: {exc}')
     loop = asyncio.get_running_loop()
     buffer = await loop.run_in_executor(None, render_lineup_card, map_name, week_label, slots, agent_icons)
     return discord.File(buffer, filename='lineup.png')

@@ -1,5 +1,6 @@
 """Feature command implementations; application dependencies are injected at registration."""
 from __future__ import annotations
+import logging
 from zoneinfo import ZoneInfo
 from zoneinfo import ZoneInfoNotFoundError
 import asyncio
@@ -9,6 +10,8 @@ import json
 from urllib.parse import quote
 from datetime import timedelta
 from datetime import timezone
+
+logger = logging.getLogger(__name__)
 
 async def schedule(interaction, *, load_season, schedule_card_file):
     await interaction.response.defer()
@@ -188,7 +191,7 @@ async def scout(interaction, team_name, team_tag, acts=1, *, AFFINITY, api, cach
                 message = str(exc)
                 if '404' in message and 'Premier Team not found' in message:
                     return []
-                print(f"Scout history lookup failed for season {season['id']}: {message}")
+                logger.warning(f"Scout history lookup failed for season {season['id']}: {message}")
                 return []
         return await cached(cache_key, 86400, fetch_history)
     history_lists = await asyncio.gather(*(season_history(season) for season in premier_seasons))
@@ -238,7 +241,7 @@ async def scout(interaction, team_name, team_tag, acts=1, *, AFFINITY, api, cach
                 return None
             return summary
         except Exception as exc:
-            print(f'Scout match {match_id} failed: {exc}')
+            logger.warning(f'Scout match {match_id} failed: {exc}')
             return None
     summaries = await asyncio.gather(*(summarize_match(match) for match in matches))
     summaries = [item for item in summaries if item]

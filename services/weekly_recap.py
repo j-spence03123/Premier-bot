@@ -418,7 +418,7 @@ async def collect_player_data(accounts, *, cached_api, affinity, start, end, bas
                                    "rr": rr, "elo": elo}
             except Exception as exc:
                 complete = False
-                print(f"Weekly recap {kind} lookup failed for {account['name']}#{account['tag']}: {exc}")
+                logger.warning(f"Weekly recap {kind} lookup failed for {account['name']}#{account['tag']}: {exc}")
         baseline = baselines.get(riot_key)
         rr = window_rr(history, start, end, baseline, current) if complete else {"rr": None, "partial": False}
         results.append({
@@ -436,7 +436,7 @@ async def collect_premier(*, history, load_summaries, start, end):
     try:
         entries = await history()
     except Exception as exc:
-        print(f"Weekly recap Premier history unavailable: {exc}")
+        logger.warning(f"Weekly recap Premier history unavailable: {exc}")
         return None
     recent = []
     for entry in entries or []:
@@ -448,7 +448,7 @@ async def collect_premier(*, history, load_summaries, start, end):
     try:
         pairs = await load_summaries(recent[:10])
     except Exception as exc:
-        print(f"Weekly recap Premier summaries unavailable: {exc}")
+        logger.warning(f"Weekly recap Premier summaries unavailable: {exc}")
         return None
     return premier_results(pairs, start, end)
 
@@ -466,7 +466,7 @@ async def guild_players(guild, players):
                 except discord.NotFound:
                     member = None
                 except discord.HTTPException as exc:
-                    print(f"Could not resolve weekly recap member {user_id} in {guild.id}: {exc}")
+                    logger.warning(f"Could not resolve weekly recap member {user_id} in {guild.id}: {exc}")
                     member = None
             members[user_id] = member
         if members[user_id] is not None:
@@ -530,7 +530,7 @@ async def weekly_recap_loop(*, client, load_matchfeeds, load_accounts, load_week
                 is_cached=is_cached, map_art=map_art,
             )
         except Exception as exc:
-            print(f"Weekly recap failed: {exc}")
+            logger.exception(f"Weekly recap failed: {exc}")
         await asyncio.sleep(60)
 
 
@@ -553,7 +553,7 @@ async def run_weekly_recap(*, client, now, load_matchfeeds, load_accounts, load_
         recaps = load_weekly_recaps()
         feeds = load_matchfeeds()
     except JsonStoreError as exc:
-        print(f"Weekly recap state is unavailable: {exc}")
+        logger.warning(f"Weekly recap state is unavailable: {exc}")
         return
     end_key = end.isoformat()
     guild_state = recaps.setdefault("guilds", {})
@@ -582,7 +582,7 @@ async def run_weekly_recap(*, client, now, load_matchfeeds, load_accounts, load_
             await channel.send(content=recap_caption(start, end), file=file,
                                allowed_mentions=discord.AllowedMentions.none())
         except (KeyError, ValueError, discord.DiscordException) as exc:
-            print(f"Could not post weekly recap in guild {guild_key}: {exc}")
+            logger.warning(f"Could not post weekly recap in guild {guild_key}: {exc}")
             continue
         guild_state[guild_key] = {"last_week_end": end_key}
         save_weekly_recaps(recaps)

@@ -1,5 +1,6 @@
 """Collect verified session highlights and deliver idle-session recap cards."""
 
+import logging
 import asyncio
 from datetime import datetime, timezone
 
@@ -11,6 +12,8 @@ from services.ai_recap import recap_facts, _featured_rounds, generate_session_su
 from services.matchfeed import SESSION_IDLE_LIMIT
 from utils.formatting import parse_time
 from urllib.parse import quote
+
+logger = logging.getLogger(__name__)
 
 
 def session_match(detail, players, match_id, started, finished, context, rank_histories=None, *, facts=None):
@@ -79,7 +82,7 @@ async def prepare_session_recap(session, tone, *, accounts, cached_api, affinity
                     if entry["account_key"] == key and type(change) is int:
                         entry["change"] = change
         except Exception as exc:
-            print(f"Session RR history unavailable for {key}: {exc}")
+            logger.warning(f"Session RR history unavailable for {key}: {exc}")
     return await recap_with_deadline(generate_session_summary(http_session, api_key, model, session, tone))
 
 
@@ -108,13 +111,13 @@ async def post_session_recaps(*, client, feeds, load_matchfeeds, save_matchfeed_
                             sent = message
                             break
                 except discord.Forbidden:
-                    print(f"Cannot check recent messages for duplicate session recaps in guild {guild_key}")
+                    logger.warning(f"Cannot check recent messages for duplicate session recaps in guild {guild_key}")
                 if sent is None:
                     if prepare_recap and not session.get("summary"):
                         try:
                             session["summary"] = await prepare_recap(session, feed.get("tone"))
                         except Exception as exc:
-                            print(f"Session summary unavailable for guild {guild_key}: {exc}")
+                            logger.warning(f"Session summary unavailable for guild {guild_key}: {exc}")
                     buffer = await asyncio.to_thread(draw_session_recap, session)
                     sent = await channel.send(
                         file=discord.File(buffer, filename=filename),
@@ -124,4 +127,4 @@ async def post_session_recaps(*, client, feeds, load_matchfeeds, save_matchfeed_
                 counts.get("pending_recaps", {}).pop(session["recap_id"], None)
                 save_matchfeed_progress(feeds, guild_key)
             except Exception as exc:
-                print(f"Session recap failed for guild {guild_key}: {exc}")
+                logger.exception(f"Session recap failed for guild {guild_key}: {exc}")

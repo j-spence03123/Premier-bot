@@ -1,5 +1,6 @@
 """Feature command implementations; application dependencies are injected at registration."""
 from __future__ import annotations
+import logging
 import asyncio
 from collections import Counter
 from datetime import datetime, timezone
@@ -7,6 +8,8 @@ import discord
 from urllib.parse import quote
 from services.account_registry import MAX_SMURFS, iter_linked_accounts, matching_account, select_linked_account
 from graphics.rank_profile import draw_rank_profile
+
+logger = logging.getLogger(__name__)
 
 async def register(interaction, riot_id, region='', *, register_account):
     await register_account(interaction, interaction.user, riot_id, region)
@@ -207,7 +210,7 @@ async def rank_cmd(interaction, name='', tag='', region='', member=None, *, AFFI
     try:
         icons = (await icon_maps()).get('tiers', {})
     except Exception as exc:
-        print(f'Rank icon catalog unavailable: {exc}')
+        logger.warning(f'Rank icon catalog unavailable: {exc}')
         icons = {}
     current_id = (cur.get('tier') or {}).get('id')
     peak_id = (peak.get('tier') or {}).get('id')
@@ -237,12 +240,12 @@ async def player_cmd(interaction, name='', tag='', mode=None, region='', member=
     try:
         mmr = await cached_api(f'/valorant/v3/mmr/{reg}/pc/{quote(name)}/{quote(tag)}', 300)
     except Exception as exc:
-        print(f'Player rank unavailable: {exc}')
+        logger.warning(f'Player rank unavailable: {exc}')
         mmr = None
     try:
         catalog = await icon_maps()
     except Exception as exc:
-        print(f'Player history agent catalog unavailable: {exc}')
+        logger.warning(f'Player history agent catalog unavailable: {exc}')
         catalog = {}
     by_name = {agent_name.casefold(): agent_id for agent_id, agent_name in catalog.get('agent_names', {}).items()}
     icon_urls = {}

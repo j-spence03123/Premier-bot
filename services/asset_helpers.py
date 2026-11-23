@@ -1,6 +1,9 @@
 """Feature helpers with explicitly supplied application dependencies."""
+import logging
 import asyncio
 import hashlib
+
+logger = logging.getLogger(__name__)
 
 async def icon_maps(*, cached, client):
     """Agent image URLs and rank tier icons from valorant-api.com, cached a week."""
@@ -59,6 +62,6 @@ async def map_background_path(map_uuid, map_name='Unknown', *, ICON_DIR, client)
                 response.raise_for_status()
                 path.write_bytes(await response.read())
     except Exception as exc:
-        print(f'Map art unavailable for {map_name}: {exc}')
+        logger.warning(f'Map art unavailable for {map_name}: {exc}')
         return None
     return path if path.exists() else None

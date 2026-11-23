@@ -1,11 +1,14 @@
 """Load assets and render match and rank announcement images."""
 
+import logging
 import asyncio
 
 import discord
 
 from services.ai_recap import local_matchfeed_recap, recap_with_deadline
 from services.squad_lore import squad_callback_used
+
+logger = logging.getLogger(__name__)
 
 
 class MatchCardFile(discord.File):
@@ -30,7 +33,7 @@ async def _players_with_art(queued_players, icon_maps, icon_img):
         try:
             catalog = await icon_maps()
         except Exception as exc:
-            print(f"Agent catalog unavailable; loading by player agent IDs: {exc}")
+            logger.warning(f"Agent catalog unavailable; loading by player agent IDs: {exc}")
     ids_by_name = {name.casefold(): agent_id for agent_id, name in catalog.get("agent_names", {}).items()}
     icon_jobs = {}
     agent_names_by_puuid = {}
@@ -66,7 +69,7 @@ async def _players_with_art(queued_players, icon_maps, icon_img):
     icons_by_puuid = dict(zip(icon_jobs, loaded))
     missing = [agent_names_by_puuid[puuid] for puuid, icon in icons_by_puuid.items() if icon is None]
     if missing:
-        print("Agent art unavailable for match card: " + ", ".join(missing))
+        logger.warning("Agent art unavailable for match card: " + ", ".join(missing))
     # Keep rendering input local; API response objects remain unchanged.
     return [dict(p, _play_icon=icons_by_puuid.get(p.get("puuid"))) for p in queued_players]
 
@@ -102,7 +105,7 @@ async def rank_change_image(player_name, from_id, from_name, to_id, to_name, dir
     try:
         tier_icons = (await icon_maps()).get("tiers", {})
     except Exception as exc:
-        print(f"Rank icon catalog unavailable: {exc}")
+        logger.warning(f"Rank icon catalog unavailable: {exc}")
         tier_icons = {}
     old_icon, new_icon = await asyncio.gather(
         icon_img(tier_icons.get(str(from_id)), 132),

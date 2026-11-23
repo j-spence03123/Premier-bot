@@ -1,9 +1,12 @@
 """Feature helpers with explicitly supplied application dependencies."""
+import logging
 import asyncio
 from datetime import datetime
 import discord
 from urllib.parse import quote
 from datetime import timezone
+
+logger = logging.getLogger(__name__)
 
 async def latest_schedule_tweet(*, X_BEARER, X_KEYWORD, X_USERNAME, cached, x_get):
     """Newest recent tweet containing X_KEYWORD, cached for 30 minutes."""
@@ -78,7 +81,7 @@ def load_season(*, JsonStoreError, SEASON_FILE, read_json):
     try:
         return read_json(SEASON_FILE, None)
     except JsonStoreError as exc:
-        print(f'Could not load season configuration: {exc}')
+        logger.warning(f'Could not load season configuration: {exc}')
         return None
 
 def season_maps(*, load_season):
@@ -100,7 +103,7 @@ async def schedule_card_file(season, today, *, map_background_path, render_sched
         paths = await asyncio.gather(*jobs.values()) if jobs else []
         map_art = dict(zip(jobs.keys(), paths))
     except Exception as exc:
-        print(f'Schedule map art unavailable: {exc}')
+        logger.warning(f'Schedule map art unavailable: {exc}')
     loop = asyncio.get_running_loop()
     buffer = await loop.run_in_executor(None, render_schedule_card, season, map_art, today)
     return discord.File(buffer, filename='premier-schedule.png')

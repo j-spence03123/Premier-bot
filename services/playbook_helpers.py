@@ -1,8 +1,11 @@
 """Feature helpers with explicitly supplied application dependencies."""
+import logging
 from pathlib import Path
 import asyncio
 import discord
 import re
+
+logger = logging.getLogger(__name__)
 
 async def available_playbook_maps(*, SETTINGS):
     unique = {}
@@ -42,7 +45,7 @@ async def playbook_diagram_file(strategy, *, PlaybookDataError, icon_img, playbo
             entry = next((item for item in catalog if str(item.get('displayName', '')).casefold() == map_name.casefold()), {})
             background = await icon_img(entry.get('displayIcon'), 928)
         except Exception as exc:
-            print(f'Playbook map image unavailable: {exc}')
+            logger.warning(f'Playbook map image unavailable: {exc}')
     if background is None:
         return None
     loop = asyncio.get_running_loop()

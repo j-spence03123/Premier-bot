@@ -1,5 +1,6 @@
 """Long-running match and reminder polling tasks."""
 
+import logging
 import asyncio
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -22,6 +23,8 @@ from utils.rank_context import count_rank_entry, match_context, rank_card_contex
 from utils.recap_tones import normalize_tone
 from utils.stored_matches import parse_stored
 
+logger = logging.getLogger(__name__)
+
 
 MATCHFEED_POLL_SECONDS = 120
 MATCHFEED_CACHE_SECONDS = 100
@@ -34,7 +37,7 @@ async def queue_reminder_loop(*, client, load_queue_schedules, build_lineup_remi
         try:
             configs = load_queue_schedules()
         except JsonStoreError as exc:
-            print(f"Queue reminder state is unavailable: {exc}")
+            logger.warning(f"Queue reminder state is unavailable: {exc}")
             await asyncio.sleep(60)
             continue
         original_configs = deepcopy(configs)
@@ -67,7 +70,7 @@ async def queue_reminder_loop(*, client, load_queue_schedules, build_lineup_remi
                     config["last_reminder_date"] = local_date
                     dirty = True
             except (KeyError, ValueError, ZoneInfoNotFoundError, discord.DiscordException) as exc:
-                print(f"Queue reminder failed for guild {guild_id}: {exc}")
+                logger.warning(f"Queue reminder failed for guild {guild_id}: {exc}")
         if dirty:
             try:
                 latest = load_queue_schedules()
@@ -82,7 +85,7 @@ async def queue_reminder_loop(*, client, load_queue_schedules, build_lineup_remi
                         current["last_reminder_date"] = updated.get("last_reminder_date")
                 save_queue_schedules(latest)
             except JsonStoreError as exc:
-                print(f"Could not save queue reminder state: {exc}")
+                logger.warning(f"Could not save queue reminder state: {exc}")
         await asyncio.sleep(60)
 
 
@@ -94,7 +97,7 @@ async def play_session_loop(*, client, load_play_sessions, load_matchfeeds, load
             accounts = load_accounts()
             matchfeeds = load_matchfeeds()
         except JsonStoreError as exc:
-            print(f"Play session state is unavailable: {exc}")
+            logger.warning(f"Play session state is unavailable: {exc}")
             await asyncio.sleep(300)
             continue
         session_identities = {
@@ -153,7 +156,7 @@ async def play_session_loop(*, client, load_play_sessions, load_matchfeeds, load
                         card = await play_match_image(detail, teammates, teammates, ours[0])
                     await channel.send(file=card, allowed_mentions=discord.AllowedMentions.none())
             except Exception as exc:
-                print(f"Play session poll failed for channel {key}: {exc}")
+                logger.warning(f"Play session poll failed for channel {key}: {exc}")
         if dirty:
             try:
                 latest = load_play_sessions()
@@ -167,7 +170,7 @@ async def play_session_loop(*, client, load_play_sessions, load_matchfeeds, load
                         current["started_at"] = updated.get("started_at")
                 save_play_sessions(latest)
             except JsonStoreError as exc:
-                print(f"Could not save play session state: {exc}")
+                logger.warning(f"Could not save play session state: {exc}")
         await asyncio.sleep(300)
 
 
@@ -182,7 +185,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
             accounts = load_accounts()
             rank_states = load_rank_states()
         except JsonStoreError as exc:
-            print(f"Match feed state is unavailable: {exc}")
+            logger.warning(f"Match feed state is unavailable: {exc}")
             await asyncio.sleep(MATCHFEED_POLL_SECONDS)
             continue
         rank_state_updates = {}
@@ -211,7 +214,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                             MATCHFEED_CACHE_SECONDS, mode="competitive", size=10,
                         )
                     except Exception as exc:
-                        print(f"Match feed history failed for {account['name']}#{account['tag']}: {exc}")
+                        logger.warning(f"Match feed history failed for {account['name']}#{account['tag']}: {exc}")
                         complete_poll = False
                         history = []
                     histories[riot_key] = history or []
@@ -240,7 +243,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                         except discord.NotFound:
                             member = None
                         except discord.HTTPException as exc:
-                            print(f"Could not resolve match feed member {user_id} in {guild.id}: {exc}")
+                            logger.warning(f"Could not resolve match feed member {user_id} in {guild.id}: {exc}")
                             complete_poll = False
                             member = None
                     member_cache[cache_key] = member
@@ -260,7 +263,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                     try:
                         detail = await cached_match_detail(cached, match_detail, match_id, candidate["region"])
                     except Exception as exc:
-                        print(f"Match feed detail failed for {match_id}: {exc}")
+                        logger.warning(f"Match feed detail failed for {match_id}: {exc}")
                         complete_poll = False
                         continue
 
@@ -287,7 +290,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                             try:
                                 channel = await client.fetch_channel(int(feed["channel_id"]))
                             except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
-                                print(f"Could not resolve match feed channel for guild {guild_key}: {exc}")
+                                logger.warning(f"Could not resolve match feed channel for guild {guild_key}: {exc}")
                                 complete_poll = False
                                 continue
 
@@ -354,7 +357,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                                         )
                                         rank_histories[key] = rank_history if isinstance(rank_history, list) else []
                                     except Exception as exc:
-                                        print(f"Match feed rank history failed for {account['name']}#{account['tag']}: {exc}")
+                                        logger.warning(f"Match feed rank history failed for {account['name']}#{account['tag']}: {exc}")
                                         rank_histories[key] = []
                                 recap_context = matchfeed_recap_context(
                                     registered_players, match_id, started, finished, histories, rank_histories,
@@ -387,7 +390,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                                     allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
                                 )
                             except discord.HTTPException as exc:
-                                print(f"Could not post match feed {match_id} in guild {guild_key}: {exc}")
+                                logger.warning(f"Could not post match feed {match_id} in guild {guild_key}: {exc}")
                                 complete_poll = False
                                 continue
                             if callback_key and callback_used:
@@ -443,7 +446,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                                     count, act_record = count_rank_entry(act_record, history, tier_id)
                                 context_line = rank_card_context(match_text, count, tier_name)
                             except Exception as exc:
-                                print(f"Rank change context unavailable for {account['name']}#{account['tag']}: {exc}")
+                                logger.warning(f"Rank change context unavailable for {account['name']}#{account['tag']}: {exc}")
                             rank_changes.append({
                                 "riot_key": riot_key,
                                 "user_ids": sorted(entry["user_ids"]),
@@ -466,7 +469,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                         if updated_rank != previous:
                             rank_state_updates[riot_key] = updated_rank
                     except Exception as exc:
-                        print(f"Match feed rank check failed for {account['name']}#{account['tag']}: {exc}")
+                        logger.warning(f"Match feed rank check failed for {account['name']}#{account['tag']}: {exc}")
 
                 for event in rank_changes:
                     try:
@@ -478,7 +481,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                         )
                         image_bytes = card.fp.getvalue()
                     except Exception as exc:
-                        print(f"Could not render rank change card for {event['name']}: {exc}")
+                        logger.warning(f"Could not render rank change card for {event['name']}: {exc}")
                         continue
                     for guild_key, feed in feeds.items():
                         guild = client.get_guild(int(guild_key))
@@ -495,7 +498,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                             try:
                                 channel = await client.fetch_channel(int(feed["channel_id"]))
                             except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
-                                print(f"Could not resolve rank feed channel for guild {guild_key}: {exc}")
+                                logger.warning(f"Could not resolve rank feed channel for guild {guild_key}: {exc}")
                                 continue
                         direction_text = "ranked up" if event["direction"] == "up" else "deranked"
                         mention_text = " ".join(f"<@{user_id}>" for user_id in matching_users)
@@ -506,10 +509,10 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                                 allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
                             )
                         except discord.HTTPException as exc:
-                            print(f"Could not post rank change for {event['name']} in guild {guild_key}: {exc}")
+                            logger.warning(f"Could not post rank change for {event['name']} in guild {guild_key}: {exc}")
                 if rank_state_updates:
                     rank_states.update(rank_state_updates)
                     save_rank_states(rank_states)
         except Exception as exc:
-            print(f"Match feed poll failed: {exc}")
+            logger.exception(f"Match feed poll failed: {exc}")
         await asyncio.sleep(max(1, MATCHFEED_POLL_SECONDS - (loop.time() - cycle_started)))

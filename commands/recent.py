@@ -1,5 +1,6 @@
 """Recent-match command and interactive scoreboard."""
 
+import logging
 import asyncio
 from urllib.parse import quote
 
@@ -9,6 +10,8 @@ from graphics.recent_scoreboard import render_recent_scoreboard
 from services.account_registry import select_linked_account
 from services.match_history import cached_match_detail
 from utils.recent_scoreboard import has_half_data
+
+logger = logging.getLogger(__name__)
 
 
 class RecentScoreboardView(discord.ui.View):
@@ -53,7 +56,7 @@ async def recent_scoreboard_view(detail, target, *, map_background_path, icon_ma
     try:
         catalog = await icon_maps()
     except Exception as exc:
-        print(f"Recent scoreboard icon catalog unavailable: {exc}")
+        logger.warning(f"Recent scoreboard icon catalog unavailable: {exc}")
         catalog = {}
     by_name = {name.casefold(): agent_id for agent_id, name in catalog.get("agent_names", {}).items()}
     agent_urls = {}
