@@ -135,6 +135,13 @@ def test_build_week_and_local_summary():
     assert "Quiet week" in local_summary(build_week([], START, END))
 
 
+def test_smurf_games_are_ranked_separately():
+    week = sample_week()
+    assert {game["player"] for game in week["top_games"]} == {"Player"}
+    assert [game["player"] for game in week["smurf_top_games"]] == ["Player2"]
+    assert build_week([], START, END)["smurf_top_games"] == []
+
+
 @pytest.mark.parametrize("premier", [True, False])
 def test_weekly_card_renders(premier):
     week = sample_week(premier)

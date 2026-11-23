@@ -101,6 +101,42 @@ def _side_panel_height(week):
     return 64 + rows * SIDE_ROW + 10
 
 
+def _draw_game_cards(image, draw, measure, y, games, map_art):
+    """Up to three side-by-side top-game cards starting at ``y``; returns the (re-created) draw handle."""
+    small = match_font(19)
+    card_gap = 14
+    card_width = (WIDTH - PAD * 2 - card_gap * 2) // 3
+    for index, game in enumerate(games):
+        left = PAD + index * (card_width + card_gap)
+        right = left + card_width
+        box = (left, y, right, y + GAME_CARD_HEIGHT)
+        rank_color, edge_color = PODIUM[index] if index < len(PODIUM) else (WHITE, PANEL_EDGE)
+        has_art = _paste_map_background(image, map_art.get(str(game.get("map", "")).casefold()), box, 12)
+        draw.rounded_rectangle(box, radius=12, fill=None if has_art else PANEL,
+                               outline=edge_color)
+        inner = left + 18
+        draw.text((inner, y + 14), f"{index + 1}.", font=match_font(30, True), fill=rank_color)
+        letter, color = _result(game)
+        chip_text, chip_font = f"{letter} {game['score']}".strip(), match_font(20, True)
+        draw_result_chip(image, (right - 16 - chip_width(chip_text, chip_font, 10), y + 16, right - 16, y + 50),
+                         color, chip_text, chip_font, gradient=False)
+        draw = ImageDraw.Draw(image)
+        draw.text((inner, y + 62), _fit(measure, f"{game['player']} · {game['agent']}", match_font(24),
+                                        card_width - 36), font=match_font(24), fill=WHITE)
+        played = game["started_at"].astimezone(MATCHFEED_DAY_ZONE)
+        draw.text((inner, y + 98), _fit(measure, f"{game['map']} · {played:%a %d %b}", small, card_width - 36),
+                  font=small, fill=MUTED)
+        draw.line((inner, y + 136, right - 18, y + 136), fill=RULE)
+        kda = f"{game['k']}/{game['d']}/{game['a']} · "
+        acs = f"{game['acs']} ACS"
+        draw.text((inner, y + 152), kda, font=small, fill=MUTED)
+        offset = measure.textlength(kda, font=small)
+        draw.text((inner + offset, y + 152), acs, font=match_font(19, True), fill=WHITE)
+        offset += measure.textlength(acs, font=match_font(19, True))
+        draw.text((inner + offset, y + 152), f" · {game['hs']}% HS", font=small, fill=MUTED)
+    return draw
+
+
 def draw_weekly_recap(week, map_art=None):
     """``map_art`` maps casefolded map names to splash image paths used behind the top-game cards."""
     map_art = map_art or {}
@@ -110,13 +146,15 @@ def draw_weekly_recap(week, map_art=None):
     summary_lines = wrap_image_text(measure, week.get("summary") or "", body, WIDTH - PAD * 2, 8)
     players = week["players"]
     games = week["top_games"]
+    smurf_games = week.get("smurf_top_games") or []
     premier = week.get("premier")
 
     rr_height = 44 + max(len(players), 1) * RR_ROW
     games_height = 44 + (GAME_CARD_HEIGHT if games else RR_ROW)
+    smurf_height = (44 + GAME_CARD_HEIGHT + GAP) if smurf_games else 0
     side_height = _side_panel_height(week)
     summary_height = (44 + len(summary_lines) * SUMMARY_LINE) if summary_lines else 0
-    height = (20 + HEADER_HEIGHT + GAP + rr_height + GAP + games_height + GAP + side_height
+    height = (20 + HEADER_HEIGHT + GAP + rr_height + GAP + games_height + GAP + smurf_height + side_height
               + (GAP + summary_height if summary_height else 0) + 60)
     image = Image.new("RGB", (WIDTH, height), BACKGROUND)
     draw = ImageDraw.Draw(image)
@@ -167,45 +205,22 @@ def draw_weekly_recap(week, map_art=None):
         draw.text((WIDTH - PAD, y), label, font=match_font(24, True), fill=color, anchor="ra")
         y += RR_ROW
 
-    # Top games as three side-by-side cards.
+    # Top games as three side-by-side cards (main accounts only).
     y = 20 + HEADER_HEIGHT + GAP + rr_height + GAP
     _section_title(draw, measure, y, "TOP GAMES")
     y += 44
     if not games:
         draw.text((PAD, y), "No games to rank this week.", font=body, fill=MUTED)
-    card_gap = 14
-    card_width = (WIDTH - PAD * 2 - card_gap * 2) // 3
-    for index, game in enumerate(games):
-        left = PAD + index * (card_width + card_gap)
-        right = left + card_width
-        box = (left, y, right, y + GAME_CARD_HEIGHT)
-        rank_color, edge_color = PODIUM[index] if index < len(PODIUM) else (WHITE, PANEL_EDGE)
-        has_art = _paste_map_background(image, map_art.get(str(game.get("map", "")).casefold()), box, 12)
-        draw.rounded_rectangle(box, radius=12, fill=None if has_art else PANEL,
-                               outline=edge_color)
-        inner = left + 18
-        draw.text((inner, y + 14), f"{index + 1}.", font=match_font(30, True), fill=rank_color)
-        letter, color = _result(game)
-        chip_text, chip_font = f"{letter} {game['score']}".strip(), match_font(20, True)
-        draw_result_chip(image, (right - 16 - chip_width(chip_text, chip_font, 10), y + 16, right - 16, y + 50),
-                         color, chip_text, chip_font, gradient=False)
-        draw = ImageDraw.Draw(image)
-        draw.text((inner, y + 62), _fit(measure, f"{game['player']} · {game['agent']}", match_font(24),
-                                        card_width - 36), font=match_font(24), fill=WHITE)
-        played = game["started_at"].astimezone(MATCHFEED_DAY_ZONE)
-        draw.text((inner, y + 98), _fit(measure, f"{game['map']} · {played:%a %d %b}", small, card_width - 36),
-                  font=small, fill=MUTED)
-        draw.line((inner, y + 136, right - 18, y + 136), fill=RULE)
-        kda = f"{game['k']}/{game['d']}/{game['a']} · "
-        acs = f"{game['acs']} ACS"
-        draw.text((inner, y + 152), kda, font=small, fill=MUTED)
-        offset = measure.textlength(kda, font=small)
-        draw.text((inner + offset, y + 152), acs, font=match_font(19, True), fill=WHITE)
-        offset += measure.textlength(acs, font=match_font(19, True))
-        draw.text((inner + offset, y + 152), f" · {game['hs']}% HS", font=small, fill=MUTED)
+    draw = _draw_game_cards(image, draw, measure, y, games, map_art)
+
+    # Smurf top games, only when someone played on a smurf.
+    if smurf_games:
+        y = 20 + HEADER_HEIGHT + GAP + rr_height + GAP + games_height + GAP
+        _section_title(draw, measure, y, "SMURF TOP GAMES")
+        draw = _draw_game_cards(image, draw, measure, y + 44, smurf_games, map_art)
 
     # Rank changes and Premier side by side (rank changes fill the row without Premier).
-    y = 20 + HEADER_HEIGHT + GAP + rr_height + GAP + games_height + GAP
+    y = 20 + HEADER_HEIGHT + GAP + rr_height + GAP + games_height + GAP + smurf_height
     panel_gap = 14
     half = (WIDTH - PAD * 2 - panel_gap) // 2
     rank_right = PAD + half if premier else WIDTH - PAD
