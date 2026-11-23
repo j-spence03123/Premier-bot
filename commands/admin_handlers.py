@@ -39,7 +39,8 @@ async def test_play_card(interaction, *, play_match_image, load_matchfeeds):
             victim = blue if player['team_id'] == 'Red' else player1 if kill_index % 2 else player2
             weapon = 'Operator' if player is player2 and round_number == 11 else 'Sheriff' if round_number == 1 else 'Vandal'
             kills.append({'round': round_number, 'time_in_round_in_ms': 1000 + kill_index * 2500, 'killer': {'puuid': player['puuid']}, 'victim': {'puuid': victim['puuid']}, 'weapon': {'name': weapon, 'type': 'Weapon'}})
-    detail = {'metadata': {'map': {'id': '224b0a95-48b9-f703-1bd8-67aca101a61f', 'name': 'Abyss'}, 'started_at': now.isoformat(), 'game_length_in_ms': 44 * 60 * 1000}, 'teams': [{'team_id': 'Red', 'won': False, 'rounds': {'won': 8, 'lost': 13}, 'premier_roster': {'name': 'Queue'}}, {'team_id': 'Blue', 'won': True, 'rounds': {'won': 13, 'lost': 8}, 'premier_roster': {'name': 'Opponents'}}], 'players': [player1, player2, blue], 'kills': kills}
+    detail = {'metadata': {'map': {'id': '224b0a95-48b9-f703-1bd8-67aca101a61f', 'name': 'Abyss'}, 'started_at': now.isoformat(), 'game_length_in_ms': 44 * 60 * 1000}, 'teams': [{'team_id': 'Red', 'won': False, 'rounds': {'won': 8, 'lost': 13}, 'premier_roster': {'name': 'Queue'}}, {'team_id': 'Blue', 'won': True, 'rounds': {'won': 13, 'lost': 8}, 'premier_roster': {'name': 'Opponents'}}], 'players': [player1, player2, blue], 'kills': kills,
+              'rounds': [{'id': number, 'winning_team': 'Red' if result == 'W' else 'Blue'} for number, result in enumerate('WLWLLWWLLWLLLWLLWLLWL', start=1)]}
     feed = load_matchfeeds().get(str(interaction.guild_id)) or {}
     tone = normalize_tone(feed.get('tone'))
     card = await play_match_image(detail, [player1, player2], [player1, player2], player1, summary_players=[player1, player2], tone=tone,
