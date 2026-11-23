@@ -90,21 +90,3 @@ async def test_rendered_card_records_whether_the_writer_used_the_optional_callba
     finally:
         card.close()
 
-
-def test_rivalries_count_who_had_the_better_kd_by_discord_member():
-    feed = {}
-    duo = {"1": "One", "2": "Two"}
-
-    def play(one, two, index, names=duo):
-        facts = {"map": "Haven", "rounds": {"won": 13, "lost": 5}, "round_highlights": [],
-                 "teammates": [{"name": names["1"], "kills": one[0], "deaths": one[1]},
-                               {"name": names["2"], "kills": two[0], "deaths": two[1]}]}
-        memory, context, _ = prepare_squad_context(feed, names, f"m{index}", START + timedelta(hours=index), facts)
-        feed["match_counts"] = {"squad_memory": memory}
-        return context["rivalries"][0]
-
-    play((20, 10), (10, 10), 1)
-    play((5, 10), (10, 10), 2)
-    play((10, 10), (10, 10), 3)
-    row = play((30, 10), (10, 10), 4, names={"1": "Renamed", "2": "Two"})
-    assert row == {"players": ["Renamed", "Two"], "record": [2, 1], "games": 4, "this_match": "Renamed"}

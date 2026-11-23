@@ -225,10 +225,3 @@ def test_half_split_collapse_becomes_a_story_angle():
     angles = pick_story_angles({"rounds": {"won": 13, "lost": 8}}, players)
     assert angles[0] == "Player went 16/6 in the first half, then 4/8 in the second"
 
-
-def test_rivalry_reaches_the_packet_once_it_has_enough_games():
-    rivalry = {"players": ["Player", "Player2"], "record": [9, 4], "games": 13, "this_match": "Player"}
-    packet, _ = packet_for(haven_collapse(), squad_context={"rivalries": [rivalry]})
-    assert "RIVALRY: Player leads Player2 9-4 in their KD rivalry across 13 games, and Player won this one" in packet
-    short = dict(rivalry, games=9)
-    assert "RIVALRY" not in packet_for(haven_collapse(), squad_context={"rivalries": [short]})[0]

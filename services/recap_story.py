@@ -124,7 +124,6 @@ def player_round_stats(detail, teammates, team_id):
 
 GRUDGE_MINIMUM = 4
 TOP_ENEMY_KILLS = 20
-RIVALRY_MINIMUM = 10
 
 
 def _agent_name(player):
@@ -313,9 +312,6 @@ def pick_story_angles(facts, players, recap_context=None, squad_context=None, li
             candidates.append((63, f"the enemy {top_enemy['agent']} went {line} and ran the lobby"))
 
     squad_context = squad_context or {}
-    rivalry = _rivalry(squad_context, players)
-    if rivalry:
-        candidates.append((56, _rivalry_text(rivalry)))
     if squad_context.get("history"):
         candidates.append((64, squad_context["history"].rstrip(".")))
     callback = squad_context.get("callback")
@@ -328,25 +324,6 @@ def pick_story_angles(facts, players, recap_context=None, squad_context=None, li
             candidates.append((10, f"{name} led the squad with {top['acs']} ACS in a {won}-{lost} {outcome}"))
     ranked = sorted(candidates, key=lambda item: -item[0])
     return list(dict.fromkeys(text for _, text in ranked))[:limit]
-
-
-def _rivalry(squad_context, players):
-    """The longest-running KD rivalry between two players in this match, if there is one."""
-    rows = [row for row in squad_context.get("rivalries") or []
-            if row.get("games", 0) >= RIVALRY_MINIMUM and all(name in players for name in row["players"])]
-    return max(rows, key=lambda row: row["games"], default=None)
-
-
-def _rivalry_text(row):
-    (a, b), (wins_a, wins_b) = row["players"], row["record"]
-    if wins_a == wins_b:
-        standing = f"{a} and {b} are level at {wins_a}-{wins_b} in their KD rivalry across {row['games']} games"
-    else:
-        leader, trailer = (a, b) if wins_a > wins_b else (b, a)
-        standing = (f"{leader} leads {trailer} {max(wins_a, wins_b)}-{min(wins_a, wins_b)} in their KD rivalry "
-                    f"across {row['games']} games")
-    winner = row.get("this_match")
-    return standing + (f", and {winner} won this one" if winner else ", and this one was a tie")
 
 
 def featured_players(players, angles, limit=MAX_FEATURED):
@@ -488,9 +465,6 @@ def build_facts_packet(detail, teammates, representative, facts, recap_context=N
         who = f" -> {callback['player']}" if callback.get("player") else ""
         lines.append(f"LORE: \"{callback['label']}\" ({callback['kind']}){who}; "
                      f"evidence: {callback['match_evidence']}")
-    rivalry = _rivalry(squad_context, {name: players[name] for name in featured})
-    if rivalry:
-        lines.append(f"RIVALRY: {_rivalry_text(rivalry)}")
     if (squad_context.get("games_together") or 0) >= TOGETHER_MINIMUM:
         lines.append(f"TOGETHER: {squad_context['games_together']} games")
     return "\n".join(lines), players

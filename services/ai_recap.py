@@ -353,7 +353,7 @@ retell the game. It must read like a story with a turn in it, not a scoreboard.
   a multikill, a clutch record, an ADR. Each number should set up or land a joke.
 - Explain what the numbers meant for the game: who built the lead, where it fell apart, who closed it.
 - Good material when it's in FACTS: a player's split between halves, a grudge against one enemy (name enemies
-  only as "the enemy <agent>"), TOP_ENEMY going off, a RIVALRY score between two teammates, RANK stakes,
+  only as "the enemy <agent>"), TOP_ENEMY going off, RANK stakes,
   how many games the squad has played TOGETHER. Use up to two of these on top of STORY_ANGLE; never list them.
 - Every joke must make literal sense for what happened, ideally using VALORANT itself (the agent's kit, the
   map, eco rounds, the Operator, the respawn screen). If a line sounds clever but you couldn't say what it
@@ -373,13 +373,13 @@ TONE: {tone}"""
 RECAP_EXAMPLES = (
     ("""RESULT: Victory 13-8 on Lotus
 STORY_ANGLE: Player went 16/6 in the first half, then 4/8 in the second
-SECOND_ANGLE: Player leads Player2 90-64 in their KD rivalry across 155 games, and Player2 won this one
+SECOND_ANGLE: the team led 10-2 at halftime and won 13-8
 HALVES: first half 10-2, second half 3-6
 FEATURED:
 - Player (Reyna): 20/14/4 (1.43 KD), 241 ACS, 152 ADR, first half 16/6, second half 4/8, best weapon Vandal (12 kills)
 - Player2 (Chamber): 19/14/2 (1.36 KD), 259 ACS, 165 ADR, 8 first bloods, first half 13/7, second half 6/7, best weapon Operator (9 kills)
 ALSO PLAYED: Player3 (Omen)
-RIVALRY: Player leads Player2 90-64 in their KD rivalry across 155 games, and Player2 won this one""",
+TOGETHER: 155 games""",
      {"headline": "PLAYER BUILT A LEAD, THEN LEFT THE SERVER",
       "body": "Sixteen kills and six deaths in the first half: that was Player's Reyna treating Lotus like a "
               "personal highlight reel, and the squad went into the break 10-2. Then the second half started and "
@@ -387,8 +387,8 @@ RIVALRY: Player leads Player2 90-64 in their KD rivalry across 155 games, and Pl
               "spectator mode. The scoreboard still reads 20/14/4, good on paper, but the split tells the real "
               "story. The person actually holding the rope was Player2, whose Chamber opened 8 rounds with first "
               "bloods and kept dragging 165 damage a round out of the Operator while the lead shrank 3-6 after "
-              "halftime. A 13-8 win, technically. Player still leads the KD rivalry 90-64, but tonight Player2 "
-              "took the round, and the group chat will be told about it until the end of the act."}),
+              "halftime. A 13-8 win, technically, and after 155 games together the squad should know by now that "
+              "a 10-2 lead with Player in it is a deposit, not a guarantee."}),
     ("""RESULT: Victory 13-11 on Abyss
 STORY_ANGLE: Player went 2/9 in the first half, then turned it around with 13/9 in the second
 SECOND_ANGLE: the team trailed 5-7 at halftime and came back to win 13-11
