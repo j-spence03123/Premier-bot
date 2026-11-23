@@ -4,7 +4,8 @@ from PIL import Image
 
 from graphics.lineup import render_lineup_card
 from graphics.help_card import render_help_card
-from graphics.match_card import _assign_unique_tags, _build_tracked, draw_play_result
+from graphics.match_card import (ROUND_STRIP_HEIGHT, _assign_unique_tags, _build_tracked, _round_results,
+                                 draw_play_result)
 from graphics.player_history import rank_summary, render_player_history
 from graphics.playbook_card import render_playbook_card, render_strategy_card
 from graphics.rank_change import draw_rank_change_card
@@ -331,4 +332,27 @@ def test_match_card_renderer_accepts_missing_icons_and_map_art():
 
     width, height = _png_size(buffer)
     assert width == 1200
-    assert height > 650  # hero, summary and five scoreboard rows
+    assert height > 650  # five teammate cards render across three rows
+
+
+def test_round_results_follow_round_order_and_need_every_round():
+    rounds = [{"id": 2, "winning_team": "Blue"}, {"id": 0, "winning_team": "Red"}, {"id": 1, "winning_team": "red"}]
+    assert _round_results({"rounds": rounds}, "Red", 2, 1) == [True, True, False]
+    assert _round_results({"rounds": rounds}, "Red", 3, 1) is None  # a round is missing
+    assert _round_results({"rounds": rounds}, "Red", 1, 2) is None  # winners don't add up to the score
+    assert _round_results({"rounds": rounds[:2] + [{"id": 2}]}, "Red", 2, 1) is None
+
+
+def test_match_card_adds_round_strip_when_rounds_match_the_score():
+    players = [{"puuid": f"p{index}", "name": f"Player {index}", "tag": "EU", "team_id": "Red",
+                "stats": {"kills": 10, "deaths": 8, "assists": 4, "score": 2100, "headshots": 10,
+                          "bodyshots": 20, "legshots": 10, "damage": {"dealt": 1800}}} for index in range(5)]
+    detail = {"metadata": {"map": {"name": "Ascent"}, "game_length_in_ms": 1_200_000,
+                           "started_at": "2026-11-01T12:00:00Z"},
+              "teams": [{"team_id": "Red", "won": True, "rounds": {"won": 13, "lost": 8}}],
+              "players": players, "kills": [], "rounds": []}
+    _, plain_height = _png_size(draw_play_result(detail, players, players, players[0], None))
+    detail["rounds"] = [{"id": index, "winning_team": "Red" if index % 3 else "Blue"} for index in range(21)]
+    detail["rounds"][19]["winning_team"] = "Blue"  # 13 won, 8 lost, final round won
+    _, strip_height = _png_size(draw_play_result(detail, players, players, players[0], None))
+    assert strip_height == plain_height + ROUND_STRIP_HEIGHT

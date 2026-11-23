@@ -1,11 +1,11 @@
+import io
+from datetime import timezone
 from pathlib import Path
 import re
 
 from PIL import Image, ImageDraw, ImageOps
 
-from .assets import (PLAY_TAG_STYLES, display_font, display_font_for, draw_soft_box, draw_spaced_text, encode_png,
-                     match_font, readable_font, wrap_image_text)
-from services.matchfeed import MATCHFEED_DAY_ZONE
+from .assets import PLAY_TAG_STYLES, chip_width, draw_soft_box, match_font, wrap_image_text
 from utils.formatting import parse_time
 from utils.match_summary import _clutch_wins, _deaths_by_round, _play_headline, _play_recap
 
@@ -254,37 +254,16 @@ def _recap_mentions(text, players, discord_names):
     return text, re.compile(rf"({mentions})(?!\w)")
 
 
-# ---------- Card layout ----------
-
-WIDTH, PAD = 1200, 32
-HERO_H, STRIP_H, HEADLINE_H, RECAP_LINE = 300, 64, 50, 36
-HEADER_H, ROW_GAP, FOOTER_H = 36, 10, 60
-BG, HERO_FALLBACK = (17, 17, 22), (26, 25, 32)
-ROW_BG, ROW_EDGE, ICON_BG = (27, 26, 32), (44, 42, 50), (38, 37, 45)
-MVP_EDGE, GOLD = (150, 128, 70), (238, 214, 139)
-TEXT, RECAP_TEXT, MUTED, LABEL = (244, 243, 247), (226, 226, 232), (173, 170, 182), (150, 148, 160)
-CORAL, NAME_BLUE, MENTION = (240, 99, 106), (164, 194, 245), (149, 190, 255)
-GOOD, BAD = (102, 207, 147), (240, 99, 106)
-ROUND_WIN, ROUND_LOSS = ((33, 88, 58), (160, 236, 190)), ((104, 36, 44), (255, 168, 174))
-RANK_X, ICON_X, ICON_SIZE = PAD + 30, PAD + 58, 64
-NAME_X, NAME_RIGHT = PAD + 140, 572
-COLUMNS = (("K / D / A", 650), ("ACS", 770), ("K/D", 872), ("ADR", 960), ("HS", 1040), ("FB / FD", 1114))
-TAG_H, TAG_GAP = 30, 6
+ROUND_WIN = ((33, 88, 58), (160, 236, 190))
+ROUND_LOSS = ((104, 36, 44), (255, 168, 174))
+ROUND_STRIP_HEIGHT = 58
 
 
-def _result_palette(won, our_score, their_score, rounds):
-    if not won and "won" in rounds and "lost" in rounds and our_score == their_score:
-        return {"word": "DRAW", "accent": (96, 96, 110), "text": (191, 190, 201)}
-    if won:
-        return {"word": "VICTORY", "accent": (40, 128, 76), "text": GOOD}
-    return {"word": "DEFEAT", "accent": (190, 52, 62), "text": BAD}
-
-
-def _round_results(detail, team_id, total):
+def _round_results(detail, team_id, won, lost):
     """Whether the squad won each round, in order, or None when rounds can't be matched to the score."""
     rows = detail.get("rounds") or []
     side = str(team_id or "").casefold()
-    if not side or not rows or len(rows) != total:
+    if not side or not rows or len(rows) != won + lost:
         return None
     results = []
     for _, row in sorted(enumerate(rows), key=lambda item: _round_number(item[1], item[0])):
@@ -292,207 +271,28 @@ def _round_results(detail, team_id, total):
         if not winner:
             return None
         results.append(winner == side)
-    return results
+    return results if sum(results) == won else None
 
 
-def _halves_text(results):
-    if not results or len(results) <= 12:
-        return ""
-    first, second, extra = results[:12], results[12:24], results[24:]
-    text = f"1ST HALF {sum(first)}–{len(first) - sum(first)} · 2ND HALF {sum(second)}–{len(second) - sum(second)}"
-    if extra:
-        text += f" · OT {sum(extra)}–{len(extra) - sum(extra)}"
-    return text
-
-
-def _cover(path, size):
-    if not path or not Path(path).exists():
-        return None
-    try:
-        with Image.open(path) as source:
-            return ImageOps.fit(source.convert("RGB"), size, method=Image.Resampling.LANCZOS)
-    except Exception:
-        return None
-
-
-def _ramp_mask(size, stops, horizontal):
-    """Alpha mask that changes linearly between (position 0-1, alpha) stops across or down ``size``."""
-    width, height = size
-    length = width if horizontal else height
-    values = []
-    for index in range(length):
-        t = index / max(length - 1, 1)
-        for (t0, a0), (t1, a1) in zip(stops, stops[1:]):
-            if t <= t1:
-                values.append(round(a0 + (a1 - a0) * ((t - t0) / (t1 - t0) if t1 > t0 else 1)))
-                break
-        else:
-            values.append(stops[-1][1])
-    strip = Image.new("L", (length, 1) if horizontal else (1, length))
-    strip.putdata(values)
-    return strip.resize(size)
-
-
-def _fit_headline(measure, headline, max_width):
-    size = 46
-    face = display_font_for(headline, size)
-    while size > 30 and measure.textlength(headline, font=face) > max_width:
-        size -= 1
-        face = display_font_for(headline, size)
-    if measure.textlength(headline, font=face) > max_width:
-        while headline and measure.textlength(headline + "...", font=face) > max_width:
-            headline = headline[:-1]
-        headline = headline.rstrip() + "..."
-    return face, headline
-
-
-def _agent_name(player):
-    agent = player.get("agent") or player.get("character") or {}
-    name = agent.get("name") if isinstance(agent, dict) else agent
-    return str(name).strip() if name else ""
-
-
-def _row_layout(measure, item):
-    """Name font and tag positions for one scoreboard row, plus the row height they need."""
-    name = str(item["p"].get("name", "?"))
-    size = 25
-    name_font = readable_font(name, size, True)
-    while size > 18 and measure.textlength(name, font=name_font) > NAME_RIGHT - NAME_X:
-        size -= 1
-        name_font = readable_font(name, size, True)
-    tag_font = match_font(14, True)
-    tags, x, row = [], 0, 0
-    for tag in item["tags"]:
-        width = int(measure.textlength(tag, font=tag_font)) + 16
-        if x and x + width > NAME_RIGHT - NAME_X:
-            row, x = row + 1, 0
-        tags.append((tag, x, row, width))
-        x += width + TAG_GAP
-    tag_rows = row + 1 if tags else 0
-    content = 30 + (10 + tag_rows * TAG_H + (tag_rows - 1) * TAG_GAP if tag_rows else 0)
-    return {"name": name, "name_font": name_font, "tag_font": tag_font, "tags": tags, "content": content,
-            "height": max(ICON_SIZE + 28, content + 36)}
-
-
-def _paste_icon(image, icon, xy):
-    tile = Image.new("RGBA", (ICON_SIZE, ICON_SIZE), (*ICON_BG, 255))
-    if icon is not None:
-        fitted = ImageOps.contain(icon.convert("RGBA"), (ICON_SIZE, ICON_SIZE), method=Image.Resampling.LANCZOS)
-        tile.alpha_composite(fitted, ((ICON_SIZE - fitted.width) // 2, (ICON_SIZE - fitted.height) // 2))
-    mask = Image.new("L", (ICON_SIZE * 4, ICON_SIZE * 4), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, ICON_SIZE * 4 - 1, ICON_SIZE * 4 - 1), radius=48, fill=255)
-    image.paste(tile.convert("RGB"), xy, mask.resize((ICON_SIZE, ICON_SIZE), Image.Resampling.LANCZOS))
-
-
-def _draw_hero(image, map_path, map_name, started, duration_ms, palette, our_score, their_score, results, footer):
-    art = _cover(map_path, (WIDTH, HERO_H))
-    hero = (Image.blend(art, Image.new("RGB", art.size, (8, 9, 12)), 0.42) if art
-            else Image.new("RGB", (WIDTH, HERO_H), HERO_FALLBACK))
-    shade = Image.new("RGB", hero.size, BG)
-    # Darken behind the map name on the left and the score on the right, then fade into the card.
-    hero.paste(shade, (0, 0), _ramp_mask(hero.size, [(0, 225), (0.55, 70), (1, 165)], horizontal=True))
-    hero.paste(shade, (0, 0), _ramp_mask(hero.size, [(0, 0), (0.5, 0), (1, 255)], horizontal=False))
-    image.paste(hero, (0, 0))
-    draw = ImageDraw.Draw(image)
-
-    parts = ["COMPETITIVE"]
-    if duration_ms:
-        parts.append(f"{duration_ms // 60000} MIN")
-    if started:
-        parts.append(started.astimezone(MATCHFEED_DAY_ZONE).strftime("%a %d %b · %H:%M").upper())
-    draw_spaced_text(draw, (PAD, 96), " · ".join(parts), match_font(16, True), CORAL, 2)
-    title = map_name.upper()
-    draw.text((PAD, 212), title, font=display_font_for(title, 112), fill=TEXT, anchor="ls")
-    if footer:
-        draw.text((PAD, 252), footer, font=readable_font(footer, 17), fill=MUTED, anchor="ls")
-
-    right = WIDTH - PAD
-    big = display_font(124)
-    them, us = str(their_score), str(our_score)
-    draw.text((right, 212), them, font=big, fill=(214, 212, 222), anchor="rs")
-    x = right - draw.textlength(them, font=big) - 18
-    draw.rounded_rectangle((x - 26, 166, x, 172), radius=3, fill=LABEL)
-    draw.text((x - 44, 212), us, font=big, fill=palette["text"], anchor="rs")
-
-    word_font = match_font(16, True)
-    word_width = sum(draw.textlength(char, font=word_font) for char in palette["word"]) + 3 * (len(palette["word"]) - 1)
-    pill = (int(right - word_width - 32), 70, right, 104)
-    draw_soft_box(image, pill, palette["accent"], opacity=240, radius=17)
-    draw = ImageDraw.Draw(image)
-    draw_spaced_text(draw, ((pill[0] + pill[2]) / 2, 87), palette["word"], word_font, (255, 255, 255), 3, anchor="mm")
-    halves = _halves_text(results)
-    if halves:
-        draw.text((right, 252), halves, font=match_font(17), fill=MUTED, anchor="rs")
-
-
-def _draw_round_strip(image, top, results):
-    draw = ImageDraw.Draw(image)
-    middle = top + STRIP_H // 2 - 2
-    draw_spaced_text(draw, (PAD, middle), "ROUNDS", match_font(13, True), LABEL, 2, anchor="lm")
-    left = PAD + 96
+def _draw_round_strip(image, center_y, results, width, side_pad):
+    """One numbered block per round across the card, green for won and red for lost, split at halftime."""
     breaks = [index for index in (12, 24) if index < len(results)]
     divider, gap, count = 18, 4, len(results)
-    cell = min(40, int((WIDTH - PAD - left - divider * len(breaks) - gap * (count - 1)) / count))
+    cell = min(56, (width - 2 * side_pad - divider * len(breaks) - gap * (count - 1)) / count)
+    x = (width - (cell * count + gap * (count - 1) + divider * len(breaks))) / 2
     number_font = match_font(13, True)
-    x = left
+    draw = ImageDraw.Draw(image)
     for index, won_round in enumerate(results):
         if index in breaks:
             line_x = x - gap / 2 + divider / 2
-            draw.line((line_x, middle - 20, line_x, middle + 20), fill=CORAL, width=2)
+            draw.line((line_x, center_y - 19, line_x, center_y + 19), fill=(240, 99, 106), width=2)
             x += divider
         fill, text = ROUND_WIN if won_round else ROUND_LOSS
-        draw_soft_box(image, (int(x), middle - 15, int(x) + cell, middle + 15), fill, opacity=255, radius=6)
+        left, right = round(x), round(x + cell)
+        draw_soft_box(image, (left, center_y - 15, right, center_y + 15), fill, opacity=255, radius=6)
         draw = ImageDraw.Draw(image)
-        draw.text((int(x) + cell / 2, middle), str(index + 1), font=number_font, fill=text, anchor="mm")
+        draw.text(((left + right) / 2, center_y), str(index + 1), font=number_font, fill=text, anchor="mm")
         x += cell + gap
-
-
-def _draw_player_row(image, top, index, item, layout, round_count, top_acs):
-    draw = ImageDraw.Draw(image)
-    bottom = top + layout["height"]
-    middle = (top + bottom) // 2
-    mvp = any(_tag_key(tag) == "MVP" for tag in item["tags"])
-    draw.rounded_rectangle((PAD, top, WIDTH - PAD, bottom), radius=14, fill=ROW_BG,
-                           outline=MVP_EDGE if mvp else ROW_EDGE, width=2 if mvp else 1)
-    draw.text((RANK_X, middle), str(index + 1), font=display_font(30), fill=GOLD if index == 0 else LABEL, anchor="mm")
-    _paste_icon(image, item["p"].get("_play_icon"), (ICON_X, middle - ICON_SIZE // 2))
-    draw = ImageDraw.Draw(image)
-
-    name_top = middle - layout["content"] // 2
-    draw.text((NAME_X, name_top), layout["name"], font=layout["name_font"], fill=NAME_BLUE, anchor="lt")
-    agent = _agent_name(item["p"])
-    if agent:
-        agent_font = match_font(15)
-        agent_x = NAME_X + draw.textlength(layout["name"], font=layout["name_font"]) + 10
-        if agent_x + draw.textlength(agent, font=agent_font) <= NAME_RIGHT:
-            draw.text((agent_x, name_top + 8), agent, font=agent_font, fill=MUTED, anchor="lt")
-    tag_top = name_top + 40
-    for tag, offset, row, width in layout["tags"]:
-        tx, ty = NAME_X + offset, tag_top + row * (TAG_H + TAG_GAP)
-        colour, text, *opacity = PLAY_TAG_STYLES.get(_tag_key(tag), ((68, 68, 78), (235, 235, 240)))
-        draw_soft_box(image, (tx, ty, tx + width, ty + TAG_H), colour, opacity=opacity[0] if opacity else 88,
-                      radius=5, outline=(*text, 105) if not opacity else None)
-        draw = ImageDraw.Draw(image)
-        bbox = layout["tag_font"].getbbox(tag, anchor="mm")
-        draw.text((tx + width / 2, ty + TAG_H / 2 - (bbox[1] + bbox[3]) / 2), tag, font=layout["tag_font"],
-                  fill=text, anchor="mm")
-
-    stats = item["st"]
-    kills, deaths, assists = stats.get("kills", 0), stats.get("deaths", 0), stats.get("assists", 0)
-    acs = round(stats.get("score", 0) / round_count)
-    kd = kills / max(deaths, 1)
-    value_font, small_font = match_font(23, True), match_font(21, True)
-    column = dict(COLUMNS)
-    draw.text((column["K / D / A"], middle), f"{kills}/{deaths}/{assists}", font=value_font, fill=TEXT, anchor="mm")
-    draw.text((column["ACS"], middle - 6), str(acs), font=value_font, fill=TEXT, anchor="mm")
-    bar_left = column["ACS"] - 35
-    draw.rounded_rectangle((bar_left, middle + 14, bar_left + 70, middle + 18), radius=2, fill=(48, 46, 56))
-    draw.rounded_rectangle((bar_left, middle + 14, bar_left + max(4, round(70 * min(acs / top_acs, 1))), middle + 18),
-                           radius=2, fill=CORAL)
-    draw.text((column["K/D"], middle), f"{kd:.2f}", font=value_font, fill=GOOD if kd >= 1 else BAD, anchor="mm")
-    draw.text((column["ADR"], middle), str(item.get("adr", 0)), font=small_font, fill=RECAP_TEXT, anchor="mm")
-    draw.text((column["HS"], middle), f"{item['hs']}%", font=small_font, fill=RECAP_TEXT, anchor="mm")
-    draw.text((column["FB / FD"], middle), f"{item['fb']}/{item['fd']}", font=small_font, fill=RECAP_TEXT, anchor="mm")
 
 
 def draw_play_result(detail, queued_players, all_teammates, representative, map_path, ai_recap=None, summary_players=None, tone="no_filter", footer=None, fallback_context="", discord_names=None):
@@ -537,6 +337,9 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
     round_count = max(our_score + their_score, 1)
     tracked = _build_tracked(detail, queued_players, all_teammates, round_count, kills_per_round,
                              first_bloods, first_deaths, top_score, low_score)
+    width, hero_h, gap = 1200, 270, 18
+    round_results = _round_results(detail, representative.get("team_id"), our_score, their_score)
+    strip_h = ROUND_STRIP_HEIGHT if round_results else 0
     focus = summary_players if summary_players is not None else all_teammates
     registered_only = summary_players is not None
     focus_ids = {p.get("puuid") for p in focus if p.get("puuid")}
@@ -546,63 +349,154 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
         recap += " " + fallback_context
     recap, mention_pattern = _recap_mentions(recap, focus, discord_names)
     headline = ((ai_recap or {}).get("headline") or _play_headline(focus, our_score, their_score, registered_only, tone)).upper()
-    palette = _result_palette(won, our_score, their_score, rounds)
-    results = _round_results(detail, representative.get("team_id"), our_score + their_score)
-    measure = ImageDraw.Draw(Image.new("RGB", (WIDTH, 1)))
-    recap_font = readable_font(recap, 22)
-    recap_lines = wrap_image_text(measure, recap, recap_font, WIDTH - 2 * PAD, 20,
+    recap_font = match_font(23)
+    measure_draw = ImageDraw.Draw(Image.new("RGB", (width, 1)))
+    columns, side_pad, column_gap = 2, 24, 18
+    recap_lines = wrap_image_text(measure_draw, recap, recap_font, width - 2 * side_pad, 20,
                                   keep_nonbreaking_spaces=mention_pattern is not None)
-    headline_font, headline = _fit_headline(measure, headline, WIDTH - 2 * PAD)
-    rows = sorted(tracked, key=lambda item: item["st"].get("score", 0), reverse=True)
-    layouts = [_row_layout(measure, item) for item in rows]
-    row_height = max((layout["height"] for layout in layouts), default=0)
-    for layout in layouts:
-        layout["height"] = row_height
-    strip_h = STRIP_H if results else 0
-    summary_h = 22 + HEADLINE_H + 12 + len(recap_lines) * RECAP_LINE + 18
-    players_h = (HEADER_H + sum(layout["height"] for layout in layouts) + ROW_GAP * (len(layouts) - 1)) if layouts else 0
-    footer_h = FOOTER_H if our_score + their_score else 24
-    height = HERO_H + strip_h + summary_h + players_h + footer_h
-    image = Image.new("RGB", (WIDTH, height), BG)
-
-    _draw_hero(image, map_path, map_name, started, duration_ms, palette, our_score, their_score, results, footer)
-    y = HERO_H
-    if results:
-        _draw_round_strip(image, y, results)
-        y += strip_h
-
+    summary_h = 114 + max(0, len(recap_lines) - 1) * 42
+    card_width = (width - 2 * side_pad - column_gap) // columns
+    tag_font = match_font(14, True)
+    tag_width_limit = card_width - 132
+    max_tag_rows = 1
+    for item in tracked:
+        used, tag_rows = 0, 1
+        for tag in item["tags"]:
+            tag_width = int(measure_draw.textlength(tag, font=tag_font)) + 16
+            if used and used + tag_width > tag_width_limit:
+                tag_rows += 1
+                used = 0
+            used += tag_width + 6
+        max_tag_rows = max(max_tag_rows, tag_rows)
+    card_h = 208 + (max_tag_rows - 1) * 28
+    rows = max(1, (len(tracked) + columns - 1) // columns)
+    cards_top = hero_h + strip_h + summary_h + 22
+    cards_bottom = cards_top + rows * (card_h + gap) - gap
+    footer_height = 58 if footer else 26
+    height = cards_bottom + footer_height
+    image = Image.new("RGB", (width, height), (17, 17, 22))
     draw = ImageDraw.Draw(image)
-    y += 22
-    draw.text((PAD, y), headline, font=headline_font, fill=palette["text"], anchor="lt")
-    y += HEADLINE_H + 12
-    for line in recap_lines:
-        parts = mention_pattern.split(line) if mention_pattern else [line]
-        x = PAD
-        for index, part in enumerate(parts):
-            draw.text((x, y), part, font=recap_font, fill=MENTION if index % 2 else RECAP_TEXT, anchor="lt")
-            x += draw.textlength(part, font=recap_font)
-        y += RECAP_LINE
-    y += 18
-
-    if layouts:
-        label_font = match_font(13, True)
-        header_y = y + HEADER_H // 2
-        draw_spaced_text(draw, (NAME_X, header_y), "PLAYER", label_font, LABEL, 2, anchor="lm")
-        for label, x in COLUMNS:
-            draw_spaced_text(draw, (x, header_y), label, label_font, LABEL, 2, anchor="mm")
-        y += HEADER_H
-        top_acs = max((round(item["st"].get("score", 0) / round_count) for item in rows), default=0) or 1
-        for index, (item, layout) in enumerate(zip(rows, layouts)):
-            _draw_player_row(image, y, index, item, layout, round_count, top_acs)
-            y += layout["height"] + ROW_GAP
-        y -= ROW_GAP
-
-    if our_score + their_score:
+    if map_path and Path(map_path).exists():
+        try:
+            bg = Image.open(map_path).convert("RGB")
+            ratio = max(width / bg.width, hero_h / bg.height)
+            bg = bg.resize((int(bg.width * ratio), int(bg.height * ratio)))
+            left, top = (bg.width - width) // 2, (bg.height - hero_h) // 2
+            bg = bg.crop((left, top, left + width, top + hero_h))
+            bg = Image.blend(bg, Image.new("RGB", bg.size, (8, 9, 12)), 0.60)
+            image.paste(bg, (0, 0))
+        except Exception:
+            pass
+    draw.rectangle((0, hero_h, width, height), fill=(17, 17, 22))
+    if round_results:
+        _draw_round_strip(image, hero_h + 33, round_results, width, side_pad)
         draw = ImageDraw.Draw(image)
-        rule_y = height - footer_h + 18
-        draw.line((PAD, rule_y, WIDTH - PAD, rule_y), fill=ROW_EDGE)
-        squad_scores = [stats.get("score", 0) / round_count for stats in stats_by_id.values()]
-        squad_acs = round(sum(squad_scores) / len(squad_scores)) if squad_scores else 0
-        draw.text((PAD, rule_y + 22), f"{our_score + their_score} rounds · squad ACS {squad_acs} · tags are awarded from match data",
-                  font=match_font(15), fill=LABEL, anchor="lm")
-    return encode_png(image)
+    accent = (72, 181, 105) if won else (220, 86, 94)
+    headline_color = (102, 207, 147) if won else (240, 99, 106)
+    if not won and "won" in rounds and "lost" in rounds and our_score == their_score:
+        accent = (116, 116, 130)
+        headline_color = (191, 190, 201)
+    f_sub = match_font(19)
+    draw.text((side_pad, 169), map_name.upper(), font=match_font(56, True), fill=(250, 250, 252), anchor="lm")
+    if started:
+        match_time = started.astimezone(timezone.utc)
+        date_label = f"{match_time.strftime('%b %d, %Y, ')}{match_time.strftime('%I').lstrip('0')}:{match_time.strftime('%M:%S %p')}"
+    else:
+        date_label = "Time unavailable"
+    draw.text((side_pad, 224), f"Competitive · {duration} · {date_label}", font=f_sub, fill=(207, 205, 210), anchor="lm")
+    badge = f"{'WIN' if won else 'DRAW' if our_score == their_score else 'LOSS'} {our_score}-{their_score}"
+    badge_font = match_font(23, True)
+    badge_box = (width - side_pad - max(208, chip_width(badge, badge_font)), 186, width - side_pad, 238)
+    draw_soft_box(image, badge_box, accent, opacity=238, radius=7)
+    draw = ImageDraw.Draw(image)
+    draw.text(((badge_box[0] + badge_box[2]) // 2, (badge_box[1] + badge_box[3]) // 2), badge,
+              font=badge_font, fill=(255, 250, 250), anchor="mm")
+    headline_size = 32
+    headline_font = match_font(headline_size, True)
+    while headline_size > 22 and draw.textlength(headline, font=headline_font) > width - 64:
+        headline_size -= 1
+        headline_font = match_font(headline_size, True)
+    if draw.textlength(headline, font=headline_font) > width - 64:
+        while headline and draw.textlength(headline + "...", font=headline_font) > width - 64:
+            headline = headline[:-1]
+        headline = headline.rstrip() + "..."
+    draw.text((side_pad, hero_h + strip_h + 44), headline, font=headline_font, fill=headline_color, anchor="lm")
+    for line_index, line in enumerate(recap_lines):
+        y = hero_h + strip_h + 100 + line_index * 42
+        parts = mention_pattern.split(line) if mention_pattern else [line]
+        prefix = ""
+        for index, part in enumerate(parts):
+            x = side_pad + draw.textlength(prefix, font=recap_font)
+            color = (149, 190, 255) if index % 2 else (226, 226, 232)
+            draw.text((x, y), part, font=recap_font, fill=color, anchor="lm")
+            prefix += part
+    for index, item in enumerate(tracked):
+        col, row = index % columns, index // columns
+        if len(tracked) % columns and row == rows - 1:
+            x = (width - card_width) // 2
+        else:
+            x = side_pad + col * (card_width + column_gap)
+        y = cards_top + row * (card_h + gap)
+        right = x + card_width
+        draw.rounded_rectangle((x, y, right, y + card_h), radius=14, fill=(28, 27, 31), outline=(42, 40, 45), width=1)
+        p, st = item["p"], item["st"]
+        icon = p.get("_play_icon")
+        icon_size = 76
+        icon_x, icon_y = x + 18, y + 18
+        draw.rounded_rectangle((icon_x, icon_y, icon_x + icon_size, icon_y + icon_size), radius=8, fill=(28, 27, 31))
+        if icon:
+            icon = ImageOps.contain(icon.convert("RGBA"), (icon_size, icon_size), method=Image.Resampling.LANCZOS)
+            fitted_x = icon_x + (icon_size - icon.width) // 2
+            fitted_y = icon_y + (icon_size - icon.height) // 2
+            image.paste(icon, (fitted_x, fitted_y), icon)
+        player_name = str(p.get("name", "?"))
+        player_name_size = 25
+        player_name_font = match_font(player_name_size, True)
+        player_name_x = x + 112
+        while player_name_size > 18 and draw.textlength(player_name, font=player_name_font) > right - player_name_x - 20:
+            player_name_size -= 1
+            player_name_font = match_font(player_name_size, True)
+        player_blue = (164, 194, 245)
+        draw.text((player_name_x, y + 18), player_name, font=player_name_font, fill=player_blue, anchor="lt")
+        tx, tag_row = player_name_x, 0
+        for tag in item["tags"]:
+            tw = int(draw.textlength(tag, font=tag_font)) + 16
+            max_right = right - 20
+            if tx + tw > max_right:
+                tag_row += 1
+                tx = player_name_x
+            tag_key = tag.split(" x", 1)[0]
+            tag_colour, tag_text, *tag_opacity = PLAY_TAG_STYLES.get(tag_key, ((68, 68, 78), (235, 235, 240)))
+            tag_y = y + 54 + tag_row * 32
+            draw_soft_box(image, (tx, tag_y, tx + tw, tag_y + 30), tag_colour,
+                          opacity=tag_opacity[0] if tag_opacity else 88, radius=5,
+                          outline=(*tag_text, 105) if not tag_opacity else None)
+            text_bbox = tag_font.getbbox(tag, anchor="mm")
+            text_center_offset = (text_bbox[1] + text_bbox[3]) / 2
+            draw.text((tx + tw / 2, tag_y + 15 - text_center_offset),
+                      tag, font=tag_font, fill=tag_text, anchor="mm")
+            tx += tw + 6
+        stat_label_y = y + 118 + tag_row * 32
+        stat_value_y = stat_label_y + 31
+        labels = [("KDA", f"{st.get('kills',0)}/{st.get('deaths',0)}/{st.get('assists',0)}"),
+                  ("ACS", str(round(st.get("score", 0) / round_count))),
+                  ("KD", f"{st.get('kills',0) / max(st.get('deaths',0),1):.2f}")]
+        cell_w = (right - x - 44) // 3
+        for cell, (label, value) in enumerate(labels):
+            cx = x + 22 + cell * cell_w + cell_w // 2
+            draw.text((cx, stat_label_y), label, font=match_font(16), fill=(154, 151, 160), anchor="mm")
+            draw.text((cx, stat_value_y), value, font=match_font(24, True), fill=(247, 246, 248), anchor="mm")
+        subtext_y = stat_value_y + 33
+        draw.text(((x + right) // 2, subtext_y),
+                  f"HS {item['hs']}% | FB {item['fb']} | FD {item['fd']}",
+                  font=match_font(15), fill=(155, 152, 161), anchor="mm")
+    if footer:
+        footer_y = height - 25
+        footer_font = match_font(19)
+        footer_color = (173, 170, 180)
+        draw.line((side_pad, cards_bottom + 16, width - side_pad, cards_bottom + 16), fill=(42, 40, 45))
+        draw.text((side_pad, footer_y), footer, font=footer_font, fill=footer_color, anchor="lm")
+    buffer = io.BytesIO()
+    image.save(buffer, "PNG")
+    buffer.seek(0)
+    return buffer
