@@ -422,8 +422,8 @@ def draw_play_result(detail, queued_players, all_teammates, representative, map_
             bg = bg.crop((left, top, left + width, top + hero_h))
             bg = Image.blend(bg, Image.new("RGB", bg.size, (8, 9, 12)), 0.60)
             image.paste(bg, (0, 0))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Match card map art could not be drawn from %s: %s", map_path, exc)
     draw.rectangle((0, hero_h, width, height), fill=(17, 17, 22))
     accent = (72, 181, 105) if won else (220, 86, 94)
     headline_color = (102, 207, 147) if won else (240, 99, 106)

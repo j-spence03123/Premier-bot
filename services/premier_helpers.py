@@ -36,7 +36,8 @@ async def current_rank(name, tag, *, AFFINITY, cached_api):
         return None
     try:
         data = await cached_api(f'/valorant/v3/mmr/{AFFINITY}/pc/{quote(name)}/{quote(tag)}', 6 * 3600)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Current rank unavailable for %s#%s: %s", name, tag, exc)
         return None
     cur = data.get('current') or {} if isinstance(data, dict) else {}
     tier = cur.get('tier') or {}

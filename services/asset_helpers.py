@@ -36,7 +36,8 @@ async def icon_img(url, size, *, ICON_DIR, _icon_locks, client, load_icon_image)
                     path.write_bytes(await r.read())
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, load_icon_image, path, size)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Icon unavailable from %s: %s", url, exc)
         return None
 
 async def valorant_map_catalog(*, cached, client):

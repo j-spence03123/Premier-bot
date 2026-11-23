@@ -13,8 +13,8 @@ async def agent_names(*, FALLBACK_AGENTS, icon_maps):
         names = sorted(maps.get('agent_names', {}).values())
         if names:
             return names
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Agent list unavailable; using the built-in list: %s", exc)
     return FALLBACK_AGENTS
 
 def matching_map_key(data, map_name):
