@@ -7,6 +7,10 @@ from PIL import Image, ImageDraw, ImageOps
 
 from .assets import chip_width, draw_soft_box, encode_png, match_font
 from .round_strip import ROUND_STRIP_HEIGHT, draw_round_strip, round_results
+
+# Header bar colours for each side: (fill, text). Won rounds use ours, lost rounds theirs.
+YOUR_TEAM = ((33, 72, 59), (153, 224, 185))
+OPPONENTS = ((75, 38, 46), (244, 151, 158))
 from utils.formatting import parse_time
 from utils.recent_scoreboard import build_scoreboard
 
@@ -56,7 +60,7 @@ def render_recent_scoreboard(detail, target, period, map_path, agent_icons, rank
     draw = ImageDraw.Draw(image)
     draw.text(((box[0] + box[2]) // 2, (box[1] + box[3]) // 2), label, font=chip_font, fill=(255, 250, 250), anchor="mm")
     if results:
-        draw_round_strip(image, hero + 33, results, width, pad)
+        draw_round_strip(image, hero + 33, results, width, pad, YOUR_TEAM, OPPONENTS)
         draw = ImageDraw.Draw(image)
     period_title = {"full": "FULL MATCH", "first": "FIRST HALF", "second": "SECOND HALF + OVERTIME"}[period]
     draw.text((pad, hero + strip_h + 36), f"SCOREBOARD  /  {period_title}", font=match_font(22, True),
@@ -66,9 +70,9 @@ def render_recent_scoreboard(detail, target, period, map_path, agent_icons, rank
     y = hero + strip_h + 76
     for team_id, group in groups:
         ours = team_id == side
-        draw.rectangle((pad, y, width - pad, y + 38), fill=(33, 72, 59) if ours else (75, 38, 46))
+        draw.rectangle((pad, y, width - pad, y + 38), fill=YOUR_TEAM[0] if ours else OPPONENTS[0])
         draw.text((pad + 15, y + 19), "YOUR TEAM" if ours else "OPPONENTS",
-                  font=match_font(15, True), fill=(153, 224, 185) if ours else (244, 151, 158), anchor="lm")
+                  font=match_font(15, True), fill=YOUR_TEAM[1] if ours else OPPONENTS[1], anchor="lm")
         draw.text((410, y + 19), "RANK", font=match_font(14, True), fill=(192, 189, 198), anchor="mm")
         for label, x in columns:
             draw.text((x, y + 19), label, font=match_font(14, True), fill=(192, 189, 198), anchor="mm")

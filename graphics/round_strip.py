@@ -29,7 +29,7 @@ def round_results(detail, team_id, won, lost):
     return results if sum(results) == won else None
 
 
-def draw_round_strip(image, center_y, results, width, side_pad):
+def draw_round_strip(image, center_y, results, width, side_pad, won_style=ROUND_WIN, lost_style=ROUND_LOSS):
     """One numbered block per round across the card, green for won and red for lost, split at halftime."""
     breaks = [index for index in (12, 24) if index < len(results)]
     divider, gap, count = 18, 4, len(results)
@@ -42,7 +42,7 @@ def draw_round_strip(image, center_y, results, width, side_pad):
             line_x = x - gap / 2 + divider / 2
             draw.line((line_x, center_y - 19, line_x, center_y + 19), fill=(240, 99, 106), width=2)
             x += divider
-        fill, text = ROUND_WIN if won_round else ROUND_LOSS
+        fill, text = won_style if won_round else lost_style
         left, right = round(x), round(x + cell)
         draw_soft_box(image, (left, center_y - 15, right, center_y + 15), fill, opacity=255, radius=6,
                       outline=(*text, 105))
