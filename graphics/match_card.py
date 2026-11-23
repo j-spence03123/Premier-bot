@@ -289,7 +289,8 @@ def _draw_round_strip(image, center_y, results, width, side_pad):
             x += divider
         fill, text = ROUND_WIN if won_round else ROUND_LOSS
         left, right = round(x), round(x + cell)
-        draw_soft_box(image, (left, center_y - 15, right, center_y + 15), fill, opacity=255, radius=6)
+        draw_soft_box(image, (left, center_y - 15, right, center_y + 15), fill, opacity=255, radius=6,
+                      outline=(*text, 105))
         draw = ImageDraw.Draw(image)
         draw.text(((left + right) / 2, center_y), str(index + 1), font=number_font, fill=text, anchor="mm")
         x += cell + gap
