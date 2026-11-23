@@ -456,3 +456,16 @@ def test_bundled_card_fonts_load_and_fall_back_for_missing_glyphs():
     assert not supports(match_font(20), "名前")
     assert readable_font("Kairo", 20).getname()[0] == "Roboto"
     assert readable_font("名前", 20).getname()[0] != "Roboto"
+
+
+def test_missing_tag_fields_are_reported_once(caplog):
+    from graphics import match_card
+    match_card._reported_gaps.clear()
+    detail = {"kills": [{"round": 0}], "players": [{"behavior": {"friendly_fire": {}}}]}
+    with caplog.at_level("WARNING", logger="graphics.match_card"):
+        match_card._report_missing_fields(detail)
+        match_card._report_missing_fields(detail)
+    messages = [record.getMessage() for record in caplog.records]
+    assert len(messages) == 2
+    assert any("KILL STEALER" in message for message in messages)
+    assert any("AFK" in message for message in messages)

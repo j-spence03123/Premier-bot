@@ -1,4 +1,5 @@
 import io
+import logging
 from pathlib import Path
 import re
 
@@ -7,6 +8,26 @@ from PIL import Image, ImageDraw, ImageOps
 from .assets import PLAY_TAG_STYLES, chip_width, draw_soft_box, match_font, readable_font, wrap_image_text
 from utils.formatting import parse_time, uk_time
 from utils.match_summary import _clutch_rounds, _deaths_by_round, _play_headline, _play_recap
+
+
+logger = logging.getLogger(__name__)
+_reported_gaps = set()
+
+
+def _report_missing_fields(detail):
+    """Log once per process when match data lacks fields some tags depend on, so a dead tag is noticed."""
+    kills = detail.get("kills") or []
+    players = detail.get("players") or []
+    gaps = []
+    if kills and not any("assistants" in event for event in kills):
+        gaps.append(("assistants", "kill events have no assist lists; TOURIST counts kills only and "
+                                   "KILL STEALER can't be awarded"))
+    if players and not any("afk_rounds" in (player.get("behavior") or {}) for player in players):
+        gaps.append(("afk_rounds", "player behaviour has no afk_rounds; AFK can't be awarded"))
+    for key, message in gaps:
+        if key not in _reported_gaps:
+            _reported_gaps.add(key)
+            logger.warning("Match data: %s", message)
 
 
 # Tags every eligible player keeps, even when a teammate earned the same one.
@@ -164,6 +185,7 @@ def _friendly_fire(player):
 def _build_tracked(detail, queued_players, all_teammates, round_count, kills_per_round,
                    first_bloods, first_deaths, top_score, low_score):
     """Work out each queued player's stat line and the tags they earned this match."""
+    _report_missing_fields(detail)
     deaths_by_round = _deaths_by_round(detail)
     clutch_wins, clutch_losses = _clutch_rounds(detail, all_teammates)
     plants = _plants(detail)
