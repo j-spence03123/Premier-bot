@@ -174,7 +174,7 @@ async def play_session_loop(*, client, load_play_sessions, load_matchfeeds, load
         await asyncio.sleep(300)
 
 
-async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_states, save_rank_states, cached_api, cached, match_detail, parse_time, play_match_image, rank_change_image, save_matchfeed_progress, AFFINITY, prepare_recap=None):
+async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_states, save_rank_states, cached_api, cached, match_detail, parse_time, play_match_image, rank_change_image, save_matchfeed_progress, AFFINITY, prepare_recap=None, record_clutches=None):
     """Poll linked accounts and post once per match when registered players appear."""
     await client.wait_until_ready()
     loop = asyncio.get_running_loop()
@@ -266,6 +266,12 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                         logger.warning(f"Match feed detail failed for {match_id}: {exc}")
                         complete_poll = False
                         continue
+
+                    if record_clutches is not None:
+                        try:
+                            record_clutches(match_id, candidate["started"], detail, set(linked))
+                        except Exception as exc:
+                            logger.warning(f"Could not save clutch data for {match_id}: {exc}")
 
                     team_groups = group_registered_players(detail.get("players", []), linked)
 

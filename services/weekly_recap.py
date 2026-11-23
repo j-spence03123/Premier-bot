@@ -14,8 +14,10 @@ import aiohttp
 import discord
 
 from services.account_registry import iter_linked_accounts
+from services.clutch_store import player_clutches
 from services.json_store import JsonStoreError
 from services.matchfeed import MATCHFEED_DAY_ZONE
+from services.weekly_awards import build_awards
 from utils.formatting import parse_time
 from utils.recap_tones import TONE_PROMPTS, normalize_tone
 from utils.stored_matches import parse_stored
@@ -152,6 +154,32 @@ def window_rank_changes(history, start, end, baseline=None, current=None):
     return [change]
 
 
+def window_rank_swing(history, start, end):
+    """A rank gained and lost again inside the window, e.g. Gold 3 -> Platinum 1 -> Gold 3.
+
+    Returns the peak and when it was reached and lost, counted in ranked games this week, or None.
+    """
+    points = [point for point in _history_points(history)
+              if point["when"] < end and isinstance(point["tier"], int) and point["tier"] >= 3 and point["tier_name"]]
+    inside = [point for point in points if point["when"] >= start]
+    if len(inside) < 2:
+        return None
+    season = inside[-1]["season"]
+    before = [point for point in points if point["when"] < start and point["season"] == season]
+    start_tier = before[-1]["tier"] if before else inside[0]["tier"]
+    peak_index = max(range(len(inside)), key=lambda index: (inside[index]["season"] == season, inside[index]["tier"],
+                                                            -index))
+    peak = inside[peak_index]
+    if peak["season"] != season or peak["tier"] <= start_tier:
+        return None
+    drop_index = next((index for index in range(peak_index + 1, len(inside))
+                       if inside[index]["tier"] < peak["tier"]), None)
+    if drop_index is None:
+        return None
+    return {"peak": peak["tier_name"], "peak_game": peak_index + 1, "end": inside[drop_index]["tier_name"],
+            "drop_game": drop_index + 1}
+
+
 def window_games(stored, start, end):
     """Competitive games from the stored-matches endpoint that started inside the window."""
     games = {}
@@ -238,6 +266,7 @@ def build_week(players, start, end, premier=None):
         "rank_changes": [{"player": player["name"], **change}
                          for player in players for change in player.get("rank_changes", [])],
         "premier": premier,
+        "awards": build_awards(players),
         "summary": None,
     }
 
@@ -375,10 +404,12 @@ async def _stored_matches(cached_api, pacer, is_cached, path, params, start):
 
 
 async def collect_player_data(accounts, *, cached_api, affinity, start, end, baselines, pace=REQUEST_PACING_SECONDS,
-                              is_cached=None):
+                              is_cached=None, clutches=None, peek_detail=None):
     """Fetch stored matches, rank history and current rank once per linked account.
 
-    ``is_cached(path, **params)`` lets requests the cache can answer skip the pacing delay.
+    ``is_cached(path, **params)`` lets requests the cache can answer skip the pacing delay. ``clutches`` is the
+    match feed's clutch store and ``peek_detail(match_id)`` returns cached match details without fetching; both
+    feed the clutch awards and are optional.
     """
     pacer = RequestPacer(pace)
     seen, results = set(), []
@@ -421,10 +452,13 @@ async def collect_player_data(accounts, *, cached_api, affinity, start, end, bas
                 logger.warning(f"Weekly recap {kind} lookup failed for {account['name']}#{account['tag']}: {exc}")
         baseline = baselines.get(riot_key)
         rr = window_rr(history, start, end, baseline, current) if complete else {"rr": None, "partial": False}
+        games = window_games(stored, start, end)
         results.append({
             "user_id": user_id, "riot_key": riot_key, "name": account["name"], "smurf": smurf,
-            "games": window_games(stored, start, end),
+            "games": games,
             "rr": rr["rr"], "partial": rr["partial"],
+            "clutch": player_clutches(riot_key, [game["match_id"] for game in games], clutches or {}, peek_detail),
+            "rank_swing": window_rank_swing(history, start, end),
             "rank": (current or {}).get("tier_name"),
             "rank_changes": window_rank_changes(history, start, end, baseline, current),
             "current": current,
@@ -486,14 +520,31 @@ async def top_game_map_art(games, map_art):
     return {name: path for name, path in zip(names, paths) if path and not isinstance(path, BaseException)}
 
 
-async def build_guild_recap(guild, players, premier, start, end, *, tone, http_session, api_key, model, map_art=None):
+async def award_agent_icons(awards, agent_art):
+    """Agent icons for the award tiles, keyed by casefolded agent name. Missing icons are simply left out."""
+    if not awards or agent_art is None:
+        return {}
+    wanted = {}
+    for entry in [awards["player_of_the_week"], *awards["awards"]]:
+        if entry.get("agent"):
+            wanted.setdefault(entry["agent"].casefold(), (entry.get("agent_id"), entry["agent"]))
+    names = list(wanted)
+    icons = await asyncio.gather(*(agent_art(*wanted[name]) for name in names), return_exceptions=True)
+    return {name: icon for name, icon in zip(names, icons) if icon is not None and not isinstance(icon, BaseException)}
+
+
+async def build_guild_recap(guild, players, premier, start, end, *, tone, http_session, api_key, model, map_art=None,
+                            agent_art=None):
     from graphics.weekly_recap import draw_weekly_recap
 
     week = build_week(await guild_players(guild, players), start, end, premier)
-    summary, backgrounds = await asyncio.gather(ai_summary(http_session, api_key, model, week, tone),
-                                                top_game_map_art(week["top_games"] + week["smurf_top_games"], map_art))
+    summary, backgrounds, icons = await asyncio.gather(
+        ai_summary(http_session, api_key, model, week, tone),
+        top_game_map_art(week["top_games"] + week["smurf_top_games"], map_art),
+        award_agent_icons(week["awards"], agent_art),
+    )
     week["summary"] = summary or local_summary(week)
-    buffer = await asyncio.to_thread(draw_weekly_recap, week, backgrounds)
+    buffer = await asyncio.to_thread(draw_weekly_recap, week, backgrounds, icons)
     stamp = end.astimezone(RECAP_ZONE).strftime("%Y-%m-%d")
     return discord.File(buffer, filename=f"weekly-recap-{stamp}.png"), week
 
@@ -503,11 +554,23 @@ def recap_caption(start, end):
     return f"**Weekly recap** · {first:%a %d %b} – {last:%a %d %b}"
 
 
+def _load_clutches(load_clutches):
+    """The match feed's clutch store; a broken or missing file only costs the clutch award."""
+    if load_clutches is None:
+        return {}
+    try:
+        store = load_clutches()
+    except JsonStoreError as exc:
+        logger.warning(f"Weekly recap clutch data unavailable: {exc}")
+        return {}
+    return store if isinstance(store, dict) else {}
+
+
 # ---------- Scheduled posting ----------
 
 async def weekly_recap_loop(*, client, load_matchfeeds, load_accounts, load_weekly_recaps, save_weekly_recaps,
                             cached_api, history, load_summaries, affinity, groq_api_key, groq_model,
-                            is_cached=None, map_art=None):
+                            is_cached=None, map_art=None, agent_art=None, load_clutches=None, peek_detail=None):
     await client.wait_until_ready()
     prefetched_for = None
     while not client.is_closed():
@@ -527,7 +590,8 @@ async def weekly_recap_loop(*, client, load_matchfeeds, load_accounts, load_week
                 load_accounts=load_accounts, load_weekly_recaps=load_weekly_recaps,
                 save_weekly_recaps=save_weekly_recaps, cached_api=cached_api, history=history,
                 load_summaries=load_summaries, affinity=affinity, groq_api_key=groq_api_key, groq_model=groq_model,
-                is_cached=is_cached, map_art=map_art,
+                is_cached=is_cached, map_art=map_art, agent_art=agent_art, load_clutches=load_clutches,
+                peek_detail=peek_detail,
             )
         except Exception as exc:
             logger.exception(f"Weekly recap failed: {exc}")
@@ -544,7 +608,8 @@ async def prefetch_weekly_recap(accounts, *, cached_api, is_cached, history, loa
 
 async def run_weekly_recap(*, client, now, load_matchfeeds, load_accounts, load_weekly_recaps, save_weekly_recaps,
                            cached_api, history, load_summaries, affinity, groq_api_key, groq_model,
-                           pace=REQUEST_PACING_SECONDS, is_cached=None, map_art=None):
+                           pace=REQUEST_PACING_SECONDS, is_cached=None, map_art=None, agent_art=None,
+                           load_clutches=None, peek_detail=None):
     """Post last week's recap to every match feed that has not had it yet."""
     start, end = completed_week(now)
     if now - end > POST_GRACE:
@@ -565,7 +630,8 @@ async def run_weekly_recap(*, client, now, load_matchfeeds, load_accounts, load_
 
     accounts = load_accounts()
     players = await collect_player_data(accounts, cached_api=cached_api, affinity=affinity, start=start, end=end,
-                                        baselines=recaps.get("baselines", {}), pace=pace, is_cached=is_cached)
+                                        baselines=recaps.get("baselines", {}), pace=pace, is_cached=is_cached,
+                                        clutches=_load_clutches(load_clutches), peek_detail=peek_detail)
     premier = await collect_premier(history=history, load_summaries=load_summaries, start=start, end=end) if due else None
 
     for guild_key, feed in due.items():
@@ -577,7 +643,7 @@ async def run_weekly_recap(*, client, now, load_matchfeeds, load_accounts, load_
             file, _ = await build_guild_recap(
                 guild, players, premier, start, end, tone=feed.get("tone"),
                 http_session=getattr(client, "http_session", None), api_key=groq_api_key, model=groq_model,
-                map_art=map_art,
+                map_art=map_art, agent_art=agent_art,
             )
             await channel.send(content=recap_caption(start, end), file=file,
                                allowed_mentions=discord.AllowedMentions.none())
@@ -598,7 +664,8 @@ async def run_weekly_recap(*, client, now, load_matchfeeds, load_accounts, load_
 
 async def preview_weekly_recap(guild, *, now, load_accounts, load_weekly_recaps, load_matchfeeds, cached_api,
                                history, load_summaries, affinity, http_session, groq_api_key, groq_model,
-                               pace=REQUEST_PACING_SECONDS, is_cached=None, map_art=None, previous=False):
+                               pace=REQUEST_PACING_SECONDS, is_cached=None, map_art=None, previous=False,
+                               agent_art=None, load_clutches=None, peek_detail=None):
     """Recap of the current week so far (or the last completed week with ``previous``), for admins to check the card.
 
     Never posts anything or touches saved recap state.
@@ -608,9 +675,10 @@ async def preview_weekly_recap(guild, *, now, load_accounts, load_weekly_recaps,
     feed = load_matchfeeds().get(str(guild.id)) or {}
     players = await collect_player_data(load_accounts(), cached_api=cached_api, affinity=affinity, start=start,
                                         end=end, baselines=recaps.get("baselines", {}), pace=pace,
-                                        is_cached=is_cached)
+                                        is_cached=is_cached, clutches=_load_clutches(load_clutches),
+                                        peek_detail=peek_detail)
     premier = await collect_premier(history=history, load_summaries=load_summaries, start=start, end=end)
     file, _ = await build_guild_recap(guild, players, premier, start, end, tone=feed.get("tone"),
                                       http_session=http_session, api_key=groq_api_key, model=groq_model,
-                                      map_art=map_art)
+                                      map_art=map_art, agent_art=agent_art)
     return file

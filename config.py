@@ -36,6 +36,7 @@ class Settings:
     matchfeeds_file: Path
     rankstates_file: Path
     weekly_recaps_file: Path
+    clutches_file: Path
     icon_dir: Path
     font_dir: Path
     groq_api_key: Optional[str]
@@ -90,6 +91,7 @@ def load_settings(environ=None) -> Settings:
         matchfeeds_file=Path("matchfeeds.json"),
         rankstates_file=Path("rankstates.json"),
         weekly_recaps_file=Path("weekly_recaps.json"),
+        clutches_file=Path("clutches.json"),
         icon_dir=Path("icons"),
         font_dir=Path(__file__).resolve().parent / "assets" / "fonts",
         groq_api_key=(environ.get("GROQ_API_KEY") or "").strip() or None,

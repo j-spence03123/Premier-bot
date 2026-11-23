@@ -25,6 +25,7 @@ play_sessions.json
 matchfeeds.json
 rankstates.json
 weekly_recaps.json
+clutches.json
 
 # Downloaded/cached map and agent images.
 icons/

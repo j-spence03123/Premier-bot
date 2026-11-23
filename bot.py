@@ -29,7 +29,7 @@ from services.playbook_service import PlaybookDataError, PlaybookService
 from services.google_sheet_import import read_google_sheet
 from services.session_recap import prepare_session_recap
 from services.valorant_api import HenrikDevClient
-from services import weekly_recap
+from services import clutch_store, weekly_recap
 from utils.formatting import fmt_range, parse_time
 from utils.queue_schedule import next_queue_start
 from utils.riot_id import split_riot_id
@@ -357,6 +357,7 @@ async def matchfeed_loop():
         rank_change_image=rank_change_image,
         save_matchfeed_progress=save_matchfeed_progress,
         prepare_recap=prepare_recap,
+        record_clutches=record_clutches,
         AFFINITY=AFFINITY,
     )
 
@@ -382,7 +383,37 @@ async def weekly_recap_loop():
         groq_api_key=SETTINGS.groq_api_key,
         groq_model=SETTINGS.groq_model,
         map_art=weekly_map_art,
+        agent_art=weekly_agent_art,
+        load_clutches=state.load_clutches,
+        peek_detail=peek_match_detail,
     )
+
+
+def record_clutches(match_id, started, detail, riot_keys):
+    """Save linked players' clutch rounds from a match feed scan for the weekly recap awards."""
+    store = clutch_store.record_match(state.load_clutches(), match_id, started,
+                                      clutch_store.match_clutches(detail, riot_keys), datetime.now(timezone.utc))
+    state.save_clutches(store)
+
+
+def peek_match_detail(match_id):
+    """Cached match details (saved by the match feed for 30 days) without calling the API."""
+    entry = cache_store.peek(f"matchdetail:{match_id}")
+    return entry.get("data") if isinstance(entry, dict) else None
+
+
+async def weekly_agent_art(agent_id, agent_name):
+    """Agent icon image for the weekly award tiles, looked up by name when the ID is missing."""
+    if not agent_id:
+        try:
+            catalog = await icon_maps()
+        except Exception:
+            catalog = {}
+        by_name = {name.casefold(): uuid for uuid, name in catalog.get("agent_names", {}).items()}
+        agent_id = by_name.get(str(agent_name).casefold())
+    if not agent_id:
+        return None
+    return await icon_img(f"https://media.valorant-api.com/agents/{agent_id}/displayicon.png", 112)
 
 
 async def weekly_map_art(map_id, map_name):
@@ -401,6 +432,7 @@ async def preview_weekly_recap(guild, previous=False):
         guild, now=datetime.now(timezone.utc), previous=previous, load_accounts=load_accounts,
         load_weekly_recaps=load_weekly_recaps, load_matchfeeds=load_matchfeeds, cached_api=cached_api,
         is_cached=api_is_cached, map_art=weekly_map_art, history=history, load_summaries=load_summaries, affinity=AFFINITY,
+        agent_art=weekly_agent_art, load_clutches=state.load_clutches, peek_detail=peek_match_detail,
         http_session=client.http_session, groq_api_key=SETTINGS.groq_api_key, groq_model=SETTINGS.groq_model,
     )
 
