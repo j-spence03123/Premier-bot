@@ -12,6 +12,7 @@ POTW_MIN_LEADS = 2  # leading fewer stats than this hands player of the week to 
 CAMEO_MAX_GAMES = 3
 TILT_MIN_STREAK = 4
 CLUTCH_ZERO_MIN_CHANCES = 5
+FREE_FALL_MIN_LOSS = 30  # RR; a -1 week is not a free fall
 
 # key, tile label, value format, noun used in the blurb
 POTW_STATS = (
@@ -45,7 +46,8 @@ def player_stats(player):
         "name": player["name"], "games": count, "rr": player.get("rr"),
         "kd": kills / max(deaths, 1), "acs": average("acs"), "adr": average("adr"), "hs": average("hs"),
         "wr": 100 * sum(game.get("won") is True for game in games) / count if count else 0,
-        "wins": sum(game.get("won") is True for game in games), "loss_streak": longest,
+        "wins": sum(game.get("won") is True for game in games),
+        "losses": sum(game.get("won") is False for game in games), "loss_streak": longest,
         "agent": agent, "agent_id": agent_id,
         "clutch": player.get("clutch"), "rank_swing": player.get("rank_swing"),
     }
@@ -176,7 +178,7 @@ def roast_awards(stats, exclude=None):
     fallers = [row for row in stats if row is not exclude and row["games"] and row["rr"] is not None]
     if fallers:
         row = min(fallers, key=lambda row: row["rr"])
-        if row["rr"] < 0:
+        if row["rr"] <= -FREE_FALL_MIN_LOSS:
             candidates.append((80, "FREE FALL", "RR", f"{row['rr']:+d}",
                                f"Shed {-row['rr']} RR this week. Gravity remains undefeated.", row))
     for weight, award, label, value, line, row in sorted(candidates, key=lambda item: -item[0]):
@@ -190,6 +192,8 @@ def roast_awards(stats, exclude=None):
         for place, row in enumerate(ordered):
             ranked.append((place, order, row, award, label, fmt(row[key]), line(row, place == 0)))
     for _, _, row, award, label, value, line in sorted(ranked, key=lambda item: item[:2]):
+        if award == "NO LIFE" and row["wins"] >= row["losses"]:
+            continue  # grinding a winning week is not a roast
         if id(row) not in taken_players and award not in taken_awards:
             take(row, award, label, value, line)
     return awards

@@ -137,3 +137,28 @@ def test_rr_fallback_says_smallest_loss_when_nobody_climbed():
 
 def test_clear_stat_leader_is_not_replaced_by_the_rr_fallback():
     assert build_awards(squad())["player_of_the_week"]["by_rr"] is False
+
+
+def test_free_fall_needs_a_real_drop_and_no_life_needs_a_losing_week():
+    week = split_week()  # SOUP is the biggest faller at only -1 RR; kitty has the most games, at 7W 7L
+    awards = {award["award"]: award["player"] for award in build_awards(week)["awards"]}
+    assert "FREE FALL" not in awards and "NO LIFE" not in awards
+    week[2]["games"] = games(14, kd=1.0, acs=230, adr=128, results=[i % 3 == 0 for i in range(14)])  # 5W 9L
+    week[4]["rr"] = -45
+    awards = {award["award"]: award["player"] for award in build_awards(week)["awards"]}
+    assert awards["FREE FALL"] == "SOUP" and awards["NO LIFE"] == "kitty"
+
+
+def test_card_layout_with_smurfs_rank_changes_premier_and_idle_players():
+    players = squad()
+    players[-1]["rank_changes"] = [{"from_id": 15, "from": "Platinum 3", "to_id": 18, "to": "Diamond 1",
+                                    "direction": "up"}]
+    players.append(player("Idle", 0, []))
+    premier = {"wins": 1, "losses": 1, "points": 25, "matches": [
+        {"won": True, "score": "13-5", "map": "Bind", "opponent": "Team A", "points": 25, "started": START},
+        {"won": False, "score": "9-13", "map": "Lotus", "opponent": "Team B", "points": 0, "started": START}]}
+    week = build_week(players, START, END, premier)
+    week["summary"] = "A summary line."
+    assert week["rank_changes"][0]["smurf"] is True
+    image = Image.open(draw_weekly_recap(week))
+    assert image.width == 1200 and image.height > 1500

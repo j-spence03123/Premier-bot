@@ -5,8 +5,8 @@ from PIL import Image, ImageDraw, ImageOps
 from graphics.assets import PLAY_TAG_STYLES, draw_soft_box, match_font, readable_font, wrap_image_text
 
 PAD, SECTION_TITLE, SECTION_GAP = 40, 44, 26
-HERO_HEIGHT, HERO_ICON = 236, 112
-TILE_HEIGHT, TILE_GAP, TILE_ICON, COLUMNS = 196, 18, 76, 2
+HERO_HEIGHT, HERO_ICON, HERO_STATS_LEFT = 182, 100, 680
+TILE_HEIGHT, TILE_GAP, TILE_ICON, COLUMNS = 150, 16, 62, 2
 BACKGROUND, TILE, TILE_EDGE = (17, 17, 22), (28, 27, 31), (42, 40, 45)
 GOLD, GOLD_EDGE, GOLD_PANEL = (255, 205, 90), (107, 90, 42), (34, 31, 24)
 CORAL, WHITE, LABEL, RULE = (240, 99, 106), (247, 246, 248), (154, 151, 160), (64, 61, 70)
@@ -89,25 +89,31 @@ def draw_awards(image, y, awards, icons=None):
     draw.rounded_rectangle((PAD, y, width - PAD, y + HERO_HEIGHT), radius=14, fill=GOLD_PANEL, outline=GOLD_EDGE,
                            width=2)
     _paste_icon(image, draw, _icon(icons, potw), PAD + 22, y + 22, HERO_ICON, edge=GOLD_EDGE)
-    _crown(draw, PAD + 22 + (HERO_ICON - 30) // 2, y + 142)
-    x = PAD + 160
+    _crown(draw, PAD + 22 + (HERO_ICON - 30) // 2, y + 132)
+    # Name, tag and blurb on the left; the stat cells sit on the right of a divider.
+    x, text_right = PAD + 146, HERO_STATS_LEFT - 30
     chip = "TOP CLIMBER" if potw.get("by_rr") else f"LEADS {len(potw['leads'])} OF {len(potw['stats'])} STATS"
     chip_width = int(draw.textlength(chip, font=match_font(14, True))) + 16
-    name_font = readable_font(potw["player"], 34, True)
-    name = _fit(draw, potw["player"], name_font, width - PAD - 24 - x - chip_width - 16)
+    name_room, size = text_right - x - chip_width - 14, 34
+    name_font = readable_font(potw["player"], size, True)
+    while size > 26 and draw.textlength(potw["player"], font=name_font) > name_room:
+        size -= 1
+        name_font = readable_font(potw["player"], size, True)
+    name = _fit(draw, potw["player"], name_font, name_room)
     draw.text((x, y + 20), name, font=name_font, fill=GOLD)
-    draw = _tag(image, x + int(draw.textlength(name, font=name_font)) + 16, y + 26, chip, PLAY_TAG_STYLES["MVP"])
-    body = readable_font(potw["line"], 21)
-    for index, line in enumerate(wrap_image_text(draw, potw["line"], body, width - PAD - 24 - x, 2)):
-        draw.text((x, y + 70 + index * 30), line, font=body, fill=BODY)
-    cell_width = (width - PAD - 24 - x) // len(potw["stats"])
+    draw = _tag(image, x + int(draw.textlength(name, font=name_font)) + 14, y + 27, chip, PLAY_TAG_STYLES["MVP"])
+    body = readable_font(potw["line"], 20)
+    for index, line in enumerate(wrap_image_text(draw, potw["line"], body, text_right - x, 3)):
+        draw.text((x, y + 72 + index * 28), line, font=body, fill=BODY)
+    draw.line((HERO_STATS_LEFT - 20, y + 30, HERO_STATS_LEFT - 20, y + HERO_HEIGHT - 30), fill=GOLD_EDGE)
+    cell_width = (width - PAD - 24 - HERO_STATS_LEFT) // len(potw["stats"])
     for index, stat in enumerate(potw["stats"]):
-        centre = x + index * cell_width + cell_width // 2
-        draw.text((centre, y + 162), stat["label"], font=match_font(16), fill=LABEL, anchor="mm")
-        draw.text((centre, y + 194), stat["value"], font=match_font(27, True), fill=GOLD if stat["lead"] else WHITE,
+        centre = HERO_STATS_LEFT + index * cell_width + cell_width // 2
+        draw.text((centre, y + 72), stat["label"], font=match_font(16), fill=LABEL, anchor="mm")
+        draw.text((centre, y + 106), stat["value"], font=match_font(28, True), fill=GOLD if stat["lead"] else WHITE,
                   anchor="mm")
         if stat["lead"]:
-            draw.rounded_rectangle((centre - 14, y + 214, centre + 14, y + 218), radius=2, fill=GOLD)
+            draw.rounded_rectangle((centre - 14, y + 128, centre + 14, y + 132), radius=2, fill=GOLD)
 
     tiles = awards["awards"]
     if not tiles:
@@ -117,7 +123,7 @@ def draw_awards(image, y, awards, icons=None):
     y += SECTION_TITLE
     rows = (len(tiles) + COLUMNS - 1) // COLUMNS
     tile_width = (width - PAD * 2 - TILE_GAP) // COLUMNS
-    value_font, label_font, line_font = match_font(28, True), match_font(16), match_font(19)
+    value_font, label_font, line_font = match_font(28, True), match_font(15), match_font(18)
     for index, award in enumerate(tiles):
         column, row = index % COLUMNS, index // COLUMNS
         if len(tiles) % COLUMNS and row == rows - 1:
@@ -127,17 +133,16 @@ def draw_awards(image, y, awards, icons=None):
         top = y + row * (TILE_HEIGHT + TILE_GAP)
         right = left + tile_width
         draw.rounded_rectangle((left, top, right, top + TILE_HEIGHT), radius=14, fill=TILE, outline=TILE_EDGE)
-        _paste_icon(image, draw, _icon(icons, award), left + 18, top + 18, TILE_ICON)
+        _paste_icon(image, draw, _icon(icons, award), left + 16, top + 16, TILE_ICON)
         value_width = max(draw.textlength(award["value"], font=value_font),
                           draw.textlength(award["label"], font=label_font))
-        name_font = readable_font(award["player"], 25, True)
-        name_left = left + 112
-        draw.text((name_left, top + 18), _fit(draw, award["player"], name_font, right - 40 - value_width - name_left),
+        name_font = readable_font(award["player"], 23, True)
+        name_left = left + 94
+        draw.text((name_left, top + 16), _fit(draw, award["player"], name_font, right - 40 - value_width - name_left),
                   font=name_font, fill=PLAYER_BLUE, anchor="lt")
-        draw = _tag(image, name_left, top + 54, award["award"], AWARD_STYLES.get(award["award"], DEFAULT_STYLE))
-        draw.text((right - 22, top + 28), award["label"], font=label_font, fill=LABEL, anchor="rm")
-        draw.text((right - 22, top + 66), award["value"], font=value_font, fill=WHITE, anchor="rm")
-        draw.line((left + 22, top + 114, right - 22, top + 114), fill=TILE_EDGE)
-        for line_index, line in enumerate(wrap_image_text(draw, award["line"], line_font, tile_width - 44, 2)):
-            draw.text((left + 22, top + 128 + line_index * 28), line, font=line_font, fill=BODY)
+        draw = _tag(image, name_left, top + 50, award["award"], AWARD_STYLES.get(award["award"], DEFAULT_STYLE))
+        draw.text((right - 20, top + 26), award["label"], font=label_font, fill=LABEL, anchor="rm")
+        draw.text((right - 20, top + 60), award["value"], font=value_font, fill=WHITE, anchor="rm")
+        for line_index, line in enumerate(wrap_image_text(draw, award["line"], line_font, tile_width - 36, 2)):
+            draw.text((left + 18, top + 94 + line_index * 25), line, font=line_font, fill=BODY)
     return draw

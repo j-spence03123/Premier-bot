@@ -263,7 +263,7 @@ def build_week(players, start, end, premier=None):
         },
         "top_games": top_games([player for player in players if not player.get("smurf")]),
         "smurf_top_games": top_games([player for player in players if player.get("smurf")]),
-        "rank_changes": [{"player": player["name"], **change}
+        "rank_changes": [{"player": player["name"], "smurf": player.get("smurf", False), **change}
                          for player in players for change in player.get("rank_changes", [])],
         "premier": premier,
         "awards": build_awards(players),
