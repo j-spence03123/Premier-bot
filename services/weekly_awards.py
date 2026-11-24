@@ -15,6 +15,8 @@ CLUTCH_ZERO_MIN_CHANCES = 5
 FREE_FALL_MIN_LOSS = 30  # RR; a -1 week is not a free fall
 LVP_MAGNET_MIN = 3  # bottom of the team's scoreboard at least this many times
 PASSENGER_MAX_ACS = 180
+CARRIED_MAX_KD = 0.9  # winning record on a KD below this
+KD_PLAYER_MIN_KD = 1.15  # losing record on a KD at or above this
 BODY_SHOOTER_MAX_HS = 25  # %; at or above this the aim is fine, whatever the squad ranking says
 
 # key, tile label, value format, noun used in the blurb
@@ -144,6 +146,14 @@ def _event_candidates(row):
         found.append((85, "CLUTCH ZERO", "CLUTCHES", f"0/{chances}",
                       f"{chances} clutch chances across {_plural(clutch['games'], 'game')} "
                       "and converted exactly none of them."))
+    record = f"{row['wins']}W {row['losses']}L"
+    if row["games"] >= POTW_MIN_GAMES and row["wins"] > row["losses"] and row["kd"] < CARRIED_MAX_KD:
+        # Weighted below the rare awards; a weaker KD makes a stronger case.
+        found.append((55 + (CARRIED_MAX_KD - row["kd"]), "CARRIED", "RECORD", record,
+                      f"{record} on a {row['kd']:.2f} KD. Make sure to thank your teammates."))
+    if row["games"] >= POTW_MIN_GAMES and row["wins"] < row["losses"] and row["kd"] >= KD_PLAYER_MIN_KD:
+        found.append((55 + (row["kd"] - KD_PLAYER_MIN_KD), "KD PLAYER", "KD", f"{row['kd']:.2f}",
+                      f"{row['kd']:.2f} KD and a {record} record. The stats look great, the scoreboard disagrees."))
     if 0 < row["games"] <= CAMEO_MAX_GAMES:
         found.append((60, "CAMEO", "GAMES", str(row["games"]),
                       f"Logged on for {_plural(row['games'], 'game')} and called it a week."))

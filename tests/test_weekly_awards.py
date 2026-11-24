@@ -210,3 +210,12 @@ def test_lvp_magnet_goes_to_the_most_lvps_and_passenger_needs_under_180_acs():
     awards = {award["award"]: award for award in build_awards(week)["awards"]}
     assert awards["LVP MAGNET"]["player"] == "Nice" and awards["LVP MAGNET"]["value"] == "4/5"
     assert "PASSENGER" not in awards  # lowest ACS left over is 180, not under it
+
+
+def test_carried_and_kd_player_cover_records_that_do_not_match_the_kd():
+    week = split_week()
+    week[1]["games"] = games(8, kd=0.8, acs=200, adr=125, results=[i % 4 != 0 for i in range(8)])  # 6W 2L
+    week[4]["games"] = games(10, kd=1.3, acs=180, adr=110, results=[i % 3 == 0 for i in range(10)])  # 4W 6L
+    awards = {award["award"]: award for award in build_awards(week)["awards"]}
+    assert awards["CARRIED"]["player"] == "TableSalt" and awards["CARRIED"]["value"] == "6W 2L"
+    assert awards["KD PLAYER"]["player"] == "SOUP" and awards["KD PLAYER"]["value"] == "1.33"
