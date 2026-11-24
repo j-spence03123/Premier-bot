@@ -162,3 +162,16 @@ def test_card_layout_with_smurfs_rank_changes_premier_and_idle_players():
     assert week["rank_changes"][0]["smurf"] is True
     image = Image.open(draw_weekly_recap(week))
     assert image.width == 1200 and image.height > 1500
+
+
+def test_body_shooter_needs_a_headshot_rate_under_25_percent():
+    week = split_week()  # default 20% HS for everyone
+    for row in week:
+        for game in row["games"]:
+            game["hs"] = 33
+    awards = {award["award"] for award in build_awards(week)["awards"]}
+    assert "BODY SHOOTER" not in awards
+    for game in week[1]["games"]:
+        game["hs"] = 18
+    awards = {award["award"]: award["player"] for award in build_awards(week)["awards"]}
+    assert awards["BODY SHOOTER"] == "TableSalt"

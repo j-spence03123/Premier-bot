@@ -13,6 +13,7 @@ CAMEO_MAX_GAMES = 3
 TILT_MIN_STREAK = 4
 CLUTCH_ZERO_MIN_CHANCES = 5
 FREE_FALL_MIN_LOSS = 30  # RR; a -1 week is not a free fall
+BODY_SHOOTER_MAX_HS = 25  # %; at or above this the aim is fine, whatever the squad ranking says
 
 # key, tile label, value format, noun used in the blurb
 POTW_STATS = (
@@ -163,6 +164,13 @@ STAT_AWARDS = (
 )
 
 
+# Stat awards a player must actually deserve, not just be worst-placed among whoever is left.
+STAT_AWARD_LIMITS = {
+    "BODY SHOOTER": lambda row: row["hs"] < BODY_SHOOTER_MAX_HS,
+    "NO LIFE": lambda row: row["wins"] < row["losses"],  # grinding a winning week is not a roast
+}
+
+
 def roast_awards(stats, exclude=None):
     awards, taken_players, taken_awards = [], set(), set()
 
@@ -192,8 +200,8 @@ def roast_awards(stats, exclude=None):
         for place, row in enumerate(ordered):
             ranked.append((place, order, row, award, label, fmt(row[key]), line(row, place == 0)))
     for _, _, row, award, label, value, line in sorted(ranked, key=lambda item: item[:2]):
-        if award == "NO LIFE" and row["wins"] >= row["losses"]:
-            continue  # grinding a winning week is not a roast
+        if not STAT_AWARD_LIMITS.get(award, lambda row: True)(row):
+            continue
         if id(row) not in taken_players and award not in taken_awards:
             take(row, award, label, value, line)
     return awards
