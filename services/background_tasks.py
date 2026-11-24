@@ -17,7 +17,6 @@ from services.json_store import JsonStoreError
 from services.match_history import cached_match_detail
 from services.matchfeed import format_match_notification, group_registered_players, next_matchfeed_counts
 from services.matchfeed_context import matchfeed_recap_context
-from services.session_recap import post_session_recaps, session_match
 from services.squad_lore import prepare_squad_context, remember_squad_callback
 from utils.rank_context import count_rank_entry, match_context, rank_card_context, rank_group
 from utils.recap_tones import normalize_tone
@@ -174,7 +173,7 @@ async def play_session_loop(*, client, load_play_sessions, load_matchfeeds, load
         await asyncio.sleep(300)
 
 
-async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_states, save_rank_states, cached_api, cached, match_detail, parse_time, play_match_image, rank_change_image, save_matchfeed_progress, AFFINITY, prepare_recap=None, record_clutches=None):
+async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_states, save_rank_states, cached_api, cached, match_detail, parse_time, play_match_image, rank_change_image, save_matchfeed_progress, AFFINITY, record_clutches=None):
     """Poll linked accounts and post once per match when registered players appear."""
     await client.wait_until_ready()
     loop = asyncio.get_running_loop()
@@ -201,7 +200,6 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                 candidates = {}
                 histories = {}
                 rank_histories = {}
-                complete_poll = True
                 for index, (riot_key, entry) in enumerate(linked.items()):
                     account = entry["account"]
                     region = account.get("region") or AFFINITY
@@ -215,7 +213,6 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                         )
                     except Exception as exc:
                         logger.warning(f"Match feed history failed for {account['name']}#{account['tag']}: {exc}")
-                        complete_poll = False
                         history = []
                     histories[riot_key] = history or []
                     for item in history or []:
@@ -232,7 +229,6 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                 member_cache = {}
 
                 async def guild_member(guild, user_id):
-                    nonlocal complete_poll
                     cache_key = (guild.id, user_id)
                     if cache_key in member_cache:
                         return member_cache[cache_key]
@@ -244,7 +240,6 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                             member = None
                         except discord.HTTPException as exc:
                             logger.warning(f"Could not resolve match feed member {user_id} in {guild.id}: {exc}")
-                            complete_poll = False
                             member = None
                     member_cache[cache_key] = member
                     return member
@@ -264,7 +259,6 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                         detail = await cached_match_detail(cached, match_detail, match_id, candidate["region"])
                     except Exception as exc:
                         logger.warning(f"Match feed detail failed for {match_id}: {exc}")
-                        complete_poll = False
                         continue
 
                     if record_clutches is not None:
@@ -297,7 +291,6 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                                 channel = await client.fetch_channel(int(feed["channel_id"]))
                             except (discord.NotFound, discord.Forbidden, discord.HTTPException) as exc:
                                 logger.warning(f"Could not resolve match feed channel for guild {guild_key}: {exc}")
-                                complete_poll = False
                                 continue
 
                         guild_groups = []
@@ -375,8 +368,6 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                                 )
                                 counts, footer = next_matchfeed_counts(
                                     feed, registered_players, match_id, started, finished,
-                                    recap_match=session_match(detail, registered_players, match_id, started, finished,
-                                                              recap_context, rank_histories, facts=facts),
                                 )
                                 roster_key = (team_id, tuple(p.get("puuid") for p in registered_players),
                                               tone, footer, tuple(sorted(discord_names.items())),
@@ -397,7 +388,6 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                                 )
                             except discord.HTTPException as exc:
                                 logger.warning(f"Could not post match feed {match_id} in guild {guild_key}: {exc}")
-                                complete_poll = False
                                 continue
                             if callback_key and callback_used:
                                 remember_squad_callback(squad_memory, callback_key)
@@ -406,14 +396,7 @@ async def matchfeed_loop(*, client, load_matchfeeds, load_accounts, load_rank_st
                             feed["seen"] = (list(feed.get("seen", [])) + [str(match_id)])[-1000:]
                             save_matchfeed_progress(feeds, guild_key)
 
-                if complete_poll:
-                    await post_session_recaps(
-                        client=client, feeds=feeds, load_matchfeeds=load_matchfeeds,
-                        save_matchfeed_progress=save_matchfeed_progress,
-                        prepare_recap=prepare_recap,
-                    )
-
-                # Let completed match posts and session recaps go out before checking current ranks.
+                # Let completed match posts go out before checking current ranks.
                 for riot_key, entry in linked.items():
                     account = entry["account"]
                     region = account.get("region") or AFFINITY

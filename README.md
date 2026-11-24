@@ -51,7 +51,7 @@ Set these in `.env` or the process environment. See `.env.example`.
 | `COMPETITIVE_MAPS` | | `Abyss,Bind,Corrode,Haven,Lotus,Summit,Sunset` | Map pool for playbook menus |
 | `GUILD_ID` | | | Sync commands to one server instead of globally |
 | `GROQ_API_KEY` | | | Enables AI recaps |
-| `GROQ_MODEL` | | `qwen/qwen3.8-27b` | Model for session and weekly summaries |
+| `GROQ_MODEL` | | `qwen/qwen3.8-27b` | Model for weekly summaries |
 | `GROQ_RECAP_MODEL` | | `openai/gpt-oss-120b` | Model for match feed recaps |
 | `X_BEARER_TOKEN`, `X_USERNAME` | | | Optional X API schedule lookup |
 | `X_KEYWORD` | | `premier` | Keyword for the X schedule lookup |

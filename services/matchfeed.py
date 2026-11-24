@@ -2,7 +2,6 @@
 
 from datetime import datetime, timedelta
 from copy import deepcopy
-from hashlib import sha256
 import json
 
 from utils.formatting import UK_ZONE
@@ -22,7 +21,7 @@ def format_match_footer(session_count, roster_size):
     return f"{ordinal} {kind} game of this session"
 
 
-def next_matchfeed_counts(feed, players, match_id, started, finished, recap_match=None):
+def next_matchfeed_counts(feed, players, match_id, started, finished):
     """Calculate the footer and the state to save after the post succeeds."""
     roster = set()
     for player in players:
@@ -31,33 +30,16 @@ def next_matchfeed_counts(feed, players, match_id, started, finished, recap_matc
     roster_key = json.dumps(sorted(roster))
     counts = feed.get("match_counts") or {}
     sessions = deepcopy(counts.get("sessions", {}))
-    pending = deepcopy(counts.get("pending_recaps", {}))
     previous = sessions.get(roster_key)
     last_finished = datetime.fromisoformat(previous["last_finished"]) if previous else None
     session_count = 1
-    continuing = (previous and not previous.get("recap_message_id")
-                  and started < last_finished + SESSION_IDLE_LIMIT
-                  and (recap_match is None or previous.get("matches")))
-    if continuing:
+    if previous and started < last_finished + SESSION_IDLE_LIMIT:
         session_count += previous["count"]
-    elif previous and previous.get("matches") and not previous.get("recap_message_id"):
-        pending[previous["recap_id"]] = previous
     sessions[roster_key] = {
         "last_finished": max(finished, last_finished or finished).isoformat(),
         "count": session_count,
     }
-    if recap_match is not None:
-        matches = list(previous["matches"]) if continuing else []
-        matches = [match for match in matches if match["id"] != str(match_id)]
-        matches.append(recap_match)
-        matches.sort(key=lambda match: match["started"])
-        sessions[roster_key].update(
-            count=len(matches), matches=matches,
-            recap_id=sha256((roster_key + matches[0]["id"]).encode()).hexdigest()[:24],
-            players=[p.get("name") or "Player" for p in players],
-        )
-        session_count = len(matches)
-    return {"sessions": sessions, "pending_recaps": pending}, format_match_footer(session_count, len(roster))
+    return {"sessions": sessions}, format_match_footer(session_count, len(roster))
 
 
 def group_registered_players(players, linked_accounts):

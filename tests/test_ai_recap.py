@@ -2,7 +2,7 @@ import pytest
 import json
 from datetime import datetime, timedelta, timezone
 
-from services.ai_recap import generate_recap, recap_facts, generate_session_summary, local_matchfeed_recap
+from services.ai_recap import generate_recap, recap_facts, local_matchfeed_recap
 from services.matchfeed_context import matchfeed_recap_context, recap_callbacks
 
 
@@ -43,22 +43,6 @@ def recap_response(headline="", body=""):
 
 def grounded(opening):
     return opening + " " + FILLER * 3
-
-
-@pytest.mark.asyncio
-async def test_session_summary_receives_match_order_and_rr_coverage():
-    http = FakeSession(FakeResponse(200, {"choices": [{"finish_reason": "stop", "message": {
-        "content": '{"summary":"Player finished the session with a win on Haven."}'
-    }}]}))
-    data = {"players": ["Player"], "matches": [
-        {"map": "Haven", "result": "W", "score": "13–8", "moments": [], "rank_changes": [],
-         "rr_changes": [{"player_id": "p1", "player": "Player", "change": 20}]},
-    ]}
-    result = await generate_session_summary(http, "test-key", "test-model", data, "kind")
-    assert result == "Player finished the session with a win on Haven."
-    facts = json.loads(http.request[1]["json"]["messages"][1]["content"])
-    assert facts["rr_totals"][0]["rr"] == 20
-    assert facts["matches"][0]["map"] == "Haven"
 
 
 @pytest.mark.asyncio
