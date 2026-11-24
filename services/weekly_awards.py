@@ -13,6 +13,8 @@ CAMEO_MAX_GAMES = 3
 TILT_MIN_STREAK = 4
 CLUTCH_ZERO_MIN_CHANCES = 5
 FREE_FALL_MIN_LOSS = 30  # RR; a -1 week is not a free fall
+LVP_MAGNET_MIN = 3  # bottom of the team's scoreboard at least this many times
+PASSENGER_MAX_ACS = 180
 BODY_SHOOTER_MAX_HS = 25  # %; at or above this the aim is fine, whatever the squad ranking says
 
 # key, tile label, value format, noun used in the blurb
@@ -167,6 +169,7 @@ STAT_AWARDS = (
 # Stat awards a player must actually deserve, not just be worst-placed among whoever is left.
 STAT_AWARD_LIMITS = {
     "BODY SHOOTER": lambda row: row["hs"] < BODY_SHOOTER_MAX_HS,
+    "PASSENGER": lambda row: row["acs"] < PASSENGER_MAX_ACS,
     "NO LIFE": lambda row: row["wins"] < row["losses"],  # grinding a winning week is not a roast
 }
 
@@ -197,6 +200,15 @@ def roast_awards(stats, exclude=None):
     candidates = [(weight, award, label, value, line, row)
                   for row in stats if row is not exclude
                   for weight, award, label, value, line in _event_candidates(row)]
+    lvp_counts = [row for row in stats
+                  if row is not exclude and (row.get("clutch") or {}).get("lvps", 0) >= LVP_MAGNET_MIN]
+    if lvp_counts:
+        row = max(lvp_counts, key=lambda row: (row["clutch"]["lvps"],
+                                               row["clutch"]["lvps"] / row["clutch"]["lvp_games"]))
+        lvps, counted = row["clutch"]["lvps"], row["clutch"]["lvp_games"]
+        candidates.append((88, "LVP MAGNET", "LVPS", f"{lvps}/{counted}",
+                           f"Bottom of the team's scoreboard in {lvps} of {_plural(counted, 'game')}. "
+                           "Someone has to hold it up.", row))
     fallers = [row for row in stats if row is not exclude and row["games"] and row["rr"] is not None]
     if fallers:
         row = min(fallers, key=lambda row: row["rr"])

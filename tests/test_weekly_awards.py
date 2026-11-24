@@ -26,7 +26,7 @@ def clutch_detail():
 
 def test_clutches_are_recorded_for_linked_players_and_old_matches_pruned():
     detail = clutch_detail()
-    assert match_clutches(detail, {"ana#eu"}) == {"ana#eu": [1, 1]}
+    assert match_clutches(detail, {"ana#eu"}) == {"ana#eu": [1, 1, 0]}  # no scores in this detail, so no LVP
     now = END
     store = {"old": {"started": (now - timedelta(days=15)).isoformat(), "players": {"ana#eu": [0, 1]}}}
     record_match(store, "m1", now - timedelta(days=1), match_clutches(detail, {"ana#eu"}), now)
@@ -37,7 +37,8 @@ def test_player_clutches_fill_gaps_from_cached_details_only():
     store = {"m1": {"started": START.isoformat(), "players": {"ana#eu": [0, 3]}}}
     details = {"m2": clutch_detail()}
     totals = player_clutches("ana#eu", ["m1", "m2", "m3"], store, details.get)
-    assert totals == {"won": 1, "lost": 4, "games": 2}  # m3 has no data and is not counted
+    # m1 predates LVP tracking and has no cached detail; m3 has no data at all.
+    assert totals == {"won": 1, "lost": 4, "games": 2, "lvps": 0, "lvp_games": 1}
 
 
 def mmr(when, tier, name, season="act"):
@@ -190,3 +191,22 @@ def test_players_who_fit_no_award_get_the_npc_card():
     assert mid["value"] == "2W 2L" and "2W 2L" in mid["line"]
     awarded = [award["player"] for award in awards]
     assert len(awarded) == len(set(awarded)) == len(week) - 1  # everyone but the winner, once each
+
+
+def test_lowest_scorer_on_the_team_is_flagged_as_lvp():
+    detail = clutch_detail()
+    for index, row in enumerate(detail["players"]):
+        row["stats"] = {"score": 1000 + 100 * index}  # Ana (index 0) is lowest on Red
+    assert match_clutches(detail, {"ana#eu", "red1#eu", "blue0#eu"}) == {
+        "ana#eu": [1, 1, 1], "red1#eu": [0, 0, 0], "blue0#eu": [0, 0, 1]}
+
+
+def test_lvp_magnet_goes_to_the_most_lvps_and_passenger_needs_under_180_acs():
+    week = split_week()
+    for row in week:
+        row["clutch"] = {"won": 1, "lost": 1, "games": len(row["games"]), "lvps": 1, "lvp_games": len(row["games"])}
+    week[3]["clutch"]["lvps"] = 4  # Nice
+    week[1]["clutch"]["lvps"] = 3  # TableSalt
+    awards = {award["award"]: award for award in build_awards(week)["awards"]}
+    assert awards["LVP MAGNET"]["player"] == "Nice" and awards["LVP MAGNET"]["value"] == "4/5"
+    assert "PASSENGER" not in awards  # lowest ACS left over is 180, not under it
