@@ -171,6 +171,20 @@ STAT_AWARD_LIMITS = {
 }
 
 
+NPC_LINES = (
+    "{kd} KD, {acs} ACS, {record}. Perfectly average, completely forgettable.",
+    "{record} with a {kd} KD. Showed up, clicked some heads, left no trace.",
+    "Not good enough for the crown, not bad enough for a roast. {record}, {acs} ACS.",
+)
+
+
+def npc_line(row):
+    """A deterministic pick so the same week always renders the same text."""
+    record = f"{row['wins']}W {row['losses']}L"
+    template = NPC_LINES[sum(map(ord, row["name"])) % len(NPC_LINES)]
+    return template.format(kd=f"{row['kd']:.2f}", acs=f"{row['acs']:.0f}", record=record)
+
+
 def roast_awards(stats, exclude=None):
     awards, taken_players, taken_awards = [], set(), set()
 
@@ -204,6 +218,10 @@ def roast_awards(stats, exclude=None):
             continue
         if id(row) not in taken_players and award not in taken_awards:
             take(row, award, label, value, line)
+    # Anyone who played but fits nothing gets the NPC card; unlike the others it can go to several players.
+    for row in stats:
+        if row is not exclude and row["games"] and id(row) not in taken_players:
+            take(row, "NPC", "RECORD", f"{row['wins']}W {row['losses']}L", npc_line(row))
     return awards
 
 

@@ -175,3 +175,18 @@ def test_body_shooter_needs_a_headshot_rate_under_25_percent():
         game["hs"] = 18
     awards = {award["award"]: award["player"] for award in build_awards(week)["awards"]}
     assert awards["BODY SHOOTER"] == "TableSalt"
+
+
+def test_players_who_fit_no_award_get_the_npc_card():
+    week = split_week()
+    for row in week:
+        for game in row["games"]:
+            game["hs"] = 33  # nobody qualifies for BODY SHOOTER
+    week.append(player("Mid", 0, games(4, wins=2)))  # too few games for stat awards, too many for CAMEO
+    awards = build_awards(week)["awards"]
+    npcs = [award for award in awards if award["award"] == "NPC"]
+    assert "Mid" in [award["player"] for award in npcs] and len(npcs) >= 2
+    mid = next(award for award in npcs if award["player"] == "Mid")
+    assert mid["value"] == "2W 2L" and "2W 2L" in mid["line"]
+    awarded = [award["player"] for award in awards]
+    assert len(awarded) == len(set(awarded)) == len(week) - 1  # everyone but the winner, once each
