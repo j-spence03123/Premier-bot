@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 
 from commands import player_handlers
-from graphics.rank_profile import draw_rank_profile
+from graphics.rank_profile import at_peak, draw_rank_profile
 
 
 def test_rank_profile_renders_with_and_without_optional_fields():
@@ -15,6 +15,24 @@ def test_rank_profile_renders_with_and_without_optional_fields():
         buffer = draw_rank_profile('Player#TAG', current, peak)
         with Image.open(buffer) as image:
             assert image.size == (1200, 500)
+
+
+def test_at_peak_detection():
+    assert at_peak({'tier': {'id': 18, 'name': 'Diamond 1'}}, {'tier': {'id': 18, 'name': 'Diamond 1'}})
+    assert not at_peak({'tier': {'id': 17}}, {'tier': {'id': 18}})
+    assert not at_peak({'tier': {'id': 0, 'name': 'Unrated'}}, {'tier': {'id': 0, 'name': 'Unrated'}})
+    assert at_peak({'tier': {'name': 'Gold 2'}}, {'tier': {'name': 'Gold 2'}})
+    assert not at_peak({}, {})
+
+
+def test_at_peak_card_renders_badge_and_borrows_current_rr():
+    current = {'tier': {'id': 18, 'name': 'Diamond 1'}, 'rr': 42, 'last_change': 18}
+    peak = {'tier': {'id': 18, 'name': 'Diamond 1'}, 'season': {'short': 'e9a3'}}
+    with Image.open(draw_rank_profile('Player#TAG', current, peak)) as at, \
+            Image.open(draw_rank_profile('Player#TAG', current, {**peak, 'tier': {'id': 19, 'name': 'Diamond 2'}})) as below:
+        assert at.size == (1200, 500)
+        assert at.getpixel((620, 300)) == (240, 99, 106)  # coral border on the peak panel
+        assert below.getpixel((620, 300)) != (240, 99, 106)
 
 
 @pytest.mark.asyncio

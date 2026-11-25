@@ -14,6 +14,15 @@ def _fit(draw, value, font, width):
     return value.rstrip() + '...'
 
 
+def at_peak(current, peak):
+    """True when the player is currently sitting at their peak rank."""
+    cur, top = current.get('tier') or {}, peak.get('tier') or {}
+    if cur.get('id') is not None and top.get('id') is not None:
+        return cur['id'] == top['id'] and cur['id'] > 2  # tiers 0-2 are unrated/unused
+    name = cur.get('name')
+    return bool(name) and name == top.get('name') and name.casefold() != 'unrated'
+
+
 def draw_rank_profile(player_name, current, peak, current_icon=None, peak_icon=None):
     image = Image.new('RGB', (1200, 500), (17, 16, 20))
     draw = ImageDraw.Draw(image)
@@ -23,8 +32,12 @@ def draw_rank_profile(player_name, current, peak, current_icon=None, peak_icon=N
     name_font = match_font(27, True)
     draw.text((1140, 70), _fit(draw, player_name, name_font, 850), font=name_font, fill=white, anchor='rm')
     draw.line((58, 108, 1142, 108), fill=(58, 56, 64), width=2)
-    for panel in ((60, 148, 580, 450), (620, 148, 1140, 450)):
-        draw.rounded_rectangle(panel, radius=12, fill=(34, 33, 39), outline=(61, 59, 67), width=1)
+    peaked = at_peak(current, peak)
+    if peaked and peak.get('rr') is None:
+        peak = {**peak, 'rr': current.get('rr')}
+    draw.rounded_rectangle((60, 148, 580, 450), radius=12, fill=(34, 33, 39), outline=(61, 59, 67), width=1)
+    draw.rounded_rectangle((620, 148, 1140, 450), radius=12, fill=(34, 33, 39),
+                           outline=coral if peaked else (61, 59, 67), width=2 if peaked else 1)
 
     for center, heading, rank, icon in ((320, 'CURRENT RANK', current, current_icon),
                                        (880, 'PEAK RANK', peak, peak_icon)):
@@ -45,7 +58,10 @@ def draw_rank_profile(player_name, current, peak, current_icon=None, peak_icon=N
     else:
         draw.text((320, 419), 'LAST GAME  unavailable', font=match_font(15), fill=muted, anchor='mm')
     season = (peak.get('season') or {}).get('short')
-    if season:
+    if peaked:
+        badge = 'AT PEAK' + (f'  ·  {str(season).upper()}' if season else '')
+        draw.text((880, 419), badge, font=match_font(15, True), fill=coral, anchor='mm')
+    elif season:
         draw.text((880, 419), str(season).upper(), font=match_font(15), fill=muted, anchor='mm')
     placement = (current.get('leaderboard_placement') or {}).get('rank')
     if placement:
