@@ -393,8 +393,7 @@ TOGETHER: 62 games""",
      {"headline": "PLAYER ACES ROUND 1, THEN CLOCKS OFF",
       "body": "Player opened Haven with a Sheriff ace in round 1, the kind of pistol round that makes a whole "
               "squad believe. Then the rest of the match happened: Player went 0.81 KD after that round, as if the "
-              "ace had spent the entire day's aim in one go. The squad still clung on at 5-7 by the half, then "
-              "failed to win a single round after the break. Player2 did find a 3K with the Odin in round 12, proof "
+              "ace had spent the entire day's aim in one go. Player2 did find a 3K with the Odin in round 12, proof "
               "that holding the trigger down long enough eventually works. Worse, Player went 0/4 in clutches, and "
               "the Clutch Allergy flared up right on schedule: four rounds on the line, four trips to the spectator "
               "cam. By the 5-13 final, that round 1 ace was the trailer for a film that never came out."}),
