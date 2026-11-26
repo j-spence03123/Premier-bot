@@ -367,16 +367,17 @@ FEATURED:
 - Player2 (Chamber): 7/18/7 (0.39 KD), 121 ACS, 1 first blood, clutches 0/1, first half 5/8, second half 2/10, best weapon Operator (5 kills)
 MULTIKILLS:
 - Player2 4K in round 11 (Operator)
-SQUAD_AVG_ACS: 160
 RANK: Player2 ranked up from Platinum 3 to Diamond 1 yesterday""",
-     {"headline": "PLAYER2'S DIAMOND DREAM LASTS 24 HOURS",
-      "body": "@Player opened three rounds with first bloods and posted a 0.82 KD in a losing effort, solid work in "
-              "a match that got away 8-13 on Lotus. @Player2 ranked up to Diamond 1 yesterday; today he came back down "
-              "to earth with 7/18/7 and a 0.39 KD, a catastrophic scoreline that erased any momentum the promotion "
-              "carried. His 4K in round 11 with the Operator was the highlight of a sentinel performance that "
-              "otherwise looked like someone playing two ranks below. @Player fell from a 10/9 half to 4/8 on "
-              "defense, but the match belonged to @Player2's disaster — the kind of game where the respawn screen "
-              "starts looking like a second office."}),
+     {"headline": "PLAYER2'S DIAMOND HONEYMOON ENDS ON LOTUS",
+      "body": "Player2 ranked up to Diamond 1 yesterday, and Lotus spent this 8-13 loss asking to see the "
+              "paperwork. The new badge came with a Chamber kit and an Operator, yet Player2 died 18 times, which "
+              "is less a Diamond debut than a guided tour of the respawn timer. The match was level at 6-6 until "
+              "Player2 went 2/10 after the break and the second half slid away 2-7. There was one genuine flash of "
+              "Diamond, a 4K with the Operator in round 11, the kind of round that gets clipped and posted before "
+              "anyone checks the rest of the scoreboard. Player kept handing the team early leads with 3 first "
+              "bloods, but a lead needs an anchor, and this anchor spent the second half anchored to the spectator "
+              "cam. Diamond 1 still sits on Player2's profile like a raffle prize that rolled straight under a Lotus "
+              "rotating door."}),
     ("""RESULT: Defeat 5-13 on Haven
 STORY_ANGLE: Player aced round 1 with the Sheriff, then went 0.81 KD for the rest of the match
 SECOND_ANGLE: the team won 0 rounds in the second half (0-6)
@@ -387,21 +388,16 @@ FEATURED:
 MULTIKILLS:
 - Player ace in round 1 (Sheriff)
 - Player2 3K in round 12 (Odin)
-SQUAD_AVG_ACS: 160
 LORE: "Clutch Allergy" (inside joke) -> Player; evidence: Player went 0/4 in clutches.
 TOGETHER: 62 games""",
-     {"headline": "PLAYER ACES ROUND 1 THEN FORGETS TO PLAY",
-      "body": "@Player opened round 1 with a Sheriff ace — a literal 5K — and then proceeded to go 0.81 KD for the "
-              "rest of the match as if the ace used up his entire skill budget for the day. Haven got cooked 5-13, "
-              "with the squad going 0 rounds in the entire second half while the enemy closed it out 6-0 after the "
-              "break. @Player2 on Sage put up a 0.41 KD and 115 ACS — catastrophically below even the bare minimum "
-              "you'd expect from a support anchor — and her best weapon was an Odin, which at least explains the 3K "
-              "in round 12 even if it explains nothing about the other 14 deaths. The combined squad ACS barely "
-              "scraped past 160, and the scoreline of 5-13 wasn't even competitive enough to be called a collapse — "
-              "it was a forfeit in slow motion. @Player went 0/4 in clutches on top of everything, so the Clutch "
-              "Allergy didn't just survive — it showed up, watched the ace, and said 'my work here is done.' "
-              "Sixty-two games together, and game 41 of this arc confirms: the ace was the universe trolling, not a "
-              "sign of things to come."}),
+     {"headline": "PLAYER ACES ROUND 1, THEN CLOCKS OFF",
+      "body": "Player opened Haven with a Sheriff ace in round 1, the kind of pistol round that makes a whole "
+              "squad believe. Then the rest of the match happened: Player went 0.81 KD after that round, as if the "
+              "ace had spent the entire day's aim in one go. The squad still clung on at 5-7 by the half, then "
+              "failed to win a single round after the break. Player2 did find a 3K with the Odin in round 12, proof "
+              "that holding the trigger down long enough eventually works. Worse, Player went 0/4 in clutches, and "
+              "the Clutch Allergy flared up right on schedule: four rounds on the line, four trips to the spectator "
+              "cam. By the 5-13 final, that round 1 ace was the trailer for a film that never came out."}),
 )
 
 

@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from services.ai_recap import RECAP_EXAMPLES, recap_facts
@@ -109,14 +111,16 @@ def test_smurf_and_lore_angles_are_available():
                       'squad lore "Clutch Allergy" applies: The team recorded a loss']
 
 
-# The examples are the brief's original wording, which uses a few numbers its facts packet can't back up
-# ("24 HOURS", "the other 14 deaths", "game 41"). Pin exactly those so nothing else slips in.
-@pytest.mark.parametrize("index,expected", [(0, ["numbers not in FACTS: 24"]),
-                                            (1, ["numbers not in FACTS: 14, 41"])])
-def test_few_shot_examples_only_go_beyond_their_facts_where_the_original_did(index, expected):
+# The examples are copied far more closely than the rules, so they must follow every rule themselves.
+@pytest.mark.parametrize("index", range(len(RECAP_EXAMPLES)))
+def test_few_shot_examples_follow_the_rules(index):
     packet, answer = RECAP_EXAMPLES[index]
-    names = {"Player", "Player2", "Player2"}
-    assert validate_recap(answer, packet, names=names, labels={"Clutch Allergy"})[1] == expected
+    names = {"Player", "Player2"}
+    assert validate_recap(answer, packet, names=names, labels={"Clutch Allergy"})[1] == []
+    text = f"{answer['headline']} {answer['body']}"
+    assert "@" not in text
+    assert not re.search(r"\b(he|him|his|she|her|hers)\b", text, re.IGNORECASE)
+    assert "SQUAD_AVG_ACS" not in packet  # the bot never sends this line, so the examples shouldn't either
 
 
 def test_numbers_include_spelled_out_values_from_three_up():
