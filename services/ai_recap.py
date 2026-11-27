@@ -7,12 +7,25 @@ import logging
 import re
 
 import aiohttp
+import anthropic
 from services.matchfeed_context import recap_callbacks
 from services.recap_story import build_facts_packet, validate_recap
 from utils.recap_tones import TONE_PROMPTS, normalize_tone
 
 logger = logging.getLogger(__name__)
 RECAP_DEADLINE_SECONDS = 15
+# Claude thinks before writing and may need a second attempt, so it gets longer before the local recap.
+CLAUDE_RECAP_DEADLINE_SECONDS = 60
+CLAUDE_RECAP_MAX_TOKENS = 16000
+CLAUDE_RECAP_BETAS = ["server-side-fallback-2026-07-01"]
+RECAP_SCHEMA = {
+    "type": "object",
+    "properties": {"headline": {"type": "string"}, "body": {"type": "string"}},
+    "required": ["headline", "body"],
+    "additionalProperties": False,
+}
+_UNAVAILABLE = object()  # the provider could not answer, as opposed to answering badly
+_claude_warned = set()
 PERSONAL_STAT_FIGURE = re.compile(
     r"\b(?:\d[\d,.]*\s+(?:combat score|score|damage|ACS|ADR)|"
     r"(?:combat score|damage dealt|ACS|ADR)\s*(?:of\s+|:\s*)?\d[\d,.]*)\b",
@@ -20,12 +33,13 @@ PERSONAL_STAT_FIGURE = re.compile(
 )
 
 
-async def recap_with_deadline(recap):
+async def recap_with_deadline(recap, timeout=None):
     """Fall back to a local recap when AI would hold up a post."""
+    timeout = timeout or RECAP_DEADLINE_SECONDS
     try:
-        return await asyncio.wait_for(recap, timeout=RECAP_DEADLINE_SECONDS)
+        return await asyncio.wait_for(recap, timeout=timeout)
     except asyncio.TimeoutError:
-        logger.warning("AI recap exceeded the %d-second deadline; using local recap", RECAP_DEADLINE_SECONDS)
+        logger.warning("AI recap exceeded the %d-second deadline; using local recap", timeout)
         return None
 
 
@@ -415,10 +429,15 @@ def _recap_messages(packet, tone):
 
 
 async def generate_recap(session, api_key, model, detail, teammates, representative, registered_only=False,
-                         tone="no_filter", recap_context=None, squad_context=None):
-    """Write a headline and stat-dense paragraph, or return None so the caller uses the local recap."""
-    if not api_key:
-        logger.warning("AI recap disabled: GROQ_API_KEY is not set; using local recap")
+                         tone="no_filter", recap_context=None, squad_context=None, *, claude_client=None,
+                         claude_model="claude-sonnet-5-5", claude_effort="medium"):
+    """Write a headline and stat-dense paragraph, or return None so the caller uses the local recap.
+
+    Claude writes the recap when a client is given; Groq is used when Claude can't answer at all
+    (no credit, outage, refusal), but not when Claude answered and failed validation twice.
+    """
+    if not api_key and claude_client is None:
+        logger.warning("AI recap disabled: neither ANTHROPIC_API_KEY nor GROQ_API_KEY is set; using local recap")
         return None
     facts = recap_facts(detail, teammates, representative, registered_only=registered_only)
     packet, _ = build_facts_packet(detail, teammates, representative, facts, recap_context, squad_context)
@@ -428,9 +447,24 @@ async def generate_recap(session, api_key, model, detail, teammates, representat
     callback = (squad_context or {}).get("callback")
     labels = {callback["label"]} if callback else set()
     messages = _recap_messages(packet, tone)
+    check = {"packet": packet, "names": names, "others": others, "labels": labels}
+
+    if claude_client is not None:
+        async def ask_claude(conversation):
+            try:
+                return await _complete_claude(claude_client, claude_model, claude_effort, conversation)
+            except Exception:  # never let an unexpected SDK error stop the match card from posting
+                logger.warning("Claude recap failed unexpectedly", exc_info=True)
+                return _UNAVAILABLE, False
+        result = await _write_recap(ask_claude, messages, check, "Claude")
+        if result is not _UNAVAILABLE:
+            return result
+        if not api_key:
+            return None
+        logger.info("Claude recap unavailable; trying Groq")
+
     payload = {
         "model": model,
-        "messages": messages,
         "max_completion_tokens": 1500,
         "temperature": 0.85,
         "response_format": {"type": "json_object"},
@@ -439,34 +473,96 @@ async def generate_recap(session, api_key, model, detail, teammates, representat
         payload.update(reasoning_effort="none", reasoning_format="hidden")
     elif model in ("openai/gpt-oss-20b", "openai/gpt-oss-120b"):
         payload["reasoning_effort"] = "low"
+
+    async def ask_groq(conversation):
+        data = await _request_groq(session, api_key, {**payload, "messages": conversation})
+        if data is None:
+            return _UNAVAILABLE, False
+        choices = data.get("choices") or []
+        content = ((choices[0].get("message") or {}).get("content") or "") if choices else ""
+        return content, bool(choices) and choices[0].get("finish_reason") == "stop"
+
     try:
-        for attempt in range(2):
-            data = await _request_groq(session, api_key, payload)
-            if data is None:
-                return None
-            choices = data.get("choices") or []
-            content = ((choices[0].get("message") or {}).get("content") or "") if choices else ""
-            if choices and choices[0].get("finish_reason") == "stop":
-                try:
-                    output = json.loads(content)
-                except ValueError:
-                    output = None
-                recap, problems = validate_recap(output, packet, names=names, other_names=others, labels=labels)
-                if recap:
-                    return recap
-            else:
-                problems = ["the answer was cut off"]
-            logger.info("AI recap rejected on attempt %d: %s", attempt + 1, "; ".join(problems))
-            payload["messages"] = messages + [
-                {"role": "assistant", "content": content[:2000]},
-                {"role": "user", "content": "Rejected: " + "; ".join(problems)
-                 + ". Rewrite it following every rule and use only FACTS."},
-            ]
-        logger.warning("AI recap failed validation twice; using local recap")
-        return None
+        result = await _write_recap(ask_groq, messages, check, "Groq")
     except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, TypeError, AttributeError, KeyError):
         logger.warning("AI recap unavailable; using local recap", exc_info=True)
         return None
+    return None if result is _UNAVAILABLE else result
+
+
+async def _write_recap(complete, messages, check, provider):
+    """Ask for a recap, send back one rejection with reasons, and return the recap, None or _UNAVAILABLE."""
+    conversation = messages
+    for attempt in range(2):
+        content, finished = await complete(conversation)
+        if content is _UNAVAILABLE:
+            return _UNAVAILABLE
+        if finished:
+            try:
+                output = json.loads(content)
+            except ValueError:
+                output = None
+            recap, problems = validate_recap(output, check["packet"], names=check["names"],
+                                             other_names=check["others"], labels=check["labels"])
+            if recap:
+                return recap
+        else:
+            problems = ["the answer was cut off"]
+        logger.info("%s recap rejected on attempt %d: %s", provider, attempt + 1, "; ".join(problems))
+        conversation = messages + [
+            {"role": "assistant", "content": content[:2000]},
+            {"role": "user", "content": "Rejected: " + "; ".join(problems)
+             + ". Rewrite it following every rule and use only FACTS."},
+        ]
+    logger.warning("%s recap failed validation twice; using local recap", provider)
+    return None
+
+
+def _warn_once(key, message, *args):
+    if key not in _claude_warned:
+        _claude_warned.add(key)
+        logger.warning(message, *args)
+
+
+async def _complete_claude(client, model, effort, conversation):
+    """Return ``(text, finished)`` from Claude, or ``(_UNAVAILABLE, False)`` when it can't answer."""
+    system, turns = conversation[0]["content"], conversation[1:]
+    try:
+        response = await client.beta.messages.create(
+            model=model,
+            max_tokens=CLAUDE_RECAP_MAX_TOKENS,
+            system=system,
+            messages=turns,
+            output_config={"effort": effort, "format": {"type": "json_schema", "schema": RECAP_SCHEMA}},
+            betas=CLAUDE_RECAP_BETAS,
+            fallbacks="default",
+        )
+    except anthropic.AuthenticationError:
+        _warn_once("auth", "Claude recap: ANTHROPIC_API_KEY was rejected; using Groq or the local recap")
+        return _UNAVAILABLE, False
+    except anthropic.APIStatusError as exc:
+        if exc.status_code == 402 or getattr(exc, "type", None) == "billing_error" or (
+                exc.status_code == 400 and "credit balance" in str(exc.message).casefold()):
+            _warn_once("credit", "Claude recap: the Anthropic credit balance is too low; using Groq or the "
+                                 "local recap until it is topped up")
+        else:
+            logger.warning("Claude recap request failed with HTTP %s (%s)", exc.status_code,
+                           getattr(exc, "type", None) or "unknown")
+        return _UNAVAILABLE, False
+    except (anthropic.APIConnectionError, anthropic.APITimeoutError):
+        logger.warning("Claude recap connection failed or timed out")
+        return _UNAVAILABLE, False
+    _claude_warned.discard("credit")  # warn again if the balance runs out after a top-up
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        logger.info("Claude recap used %s input and %s output tokens", getattr(usage, "input_tokens", "?"),
+                    getattr(usage, "output_tokens", "?"))
+    if response.stop_reason == "refusal":
+        logger.warning("Claude declined the recap (%s)",
+                       getattr(getattr(response, "stop_details", None), "category", None) or "no category")
+        return _UNAVAILABLE, False
+    text = next((block.text for block in response.content if block.type == "text"), "")
+    return text, response.stop_reason == "end_turn"
 
 
 async def _request_groq(session, api_key, payload):

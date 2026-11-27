@@ -1,9 +1,11 @@
 import logging
 import asyncio
 from datetime import datetime, timezone
+import functools
 import json
 
 import aiohttp
+import anthropic
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -23,7 +25,7 @@ from services import (background_tasks, match_images, asset_helpers, premier_hel
 from services.bot_state import BotState
 from services.update_notes import announce_update_notes
 from services.cache import JsonCache
-from services.ai_recap import generate_recap
+from services.ai_recap import CLAUDE_RECAP_DEADLINE_SECONDS, RECAP_DEADLINE_SECONDS, generate_recap
 from services.json_store import JsonStoreError, read_json
 from services.match_history import MatchHistoryService
 from services.playbook_service import PlaybookDataError, PlaybookService
@@ -111,6 +113,8 @@ class BotClient(commands.Bot):
         for session in (getattr(self, "http_session", None), getattr(self, "x_session", None)):
             if session and not session.closed:
                 await session.close()
+        if claude_client is not None:
+            await claude_client.close()
         await cache_store.flush_pending()
         await super().close()
 
@@ -120,6 +124,8 @@ tree = client.tree
 state = BotState(SETTINGS)
 cache_store = JsonCache(CACHE_FILE)
 api_client = HenrikDevClient(BASE, HENRIK_KEY, max_concurrency=3)
+claude_client = (anthropic.AsyncAnthropic(api_key=SETTINGS.anthropic_api_key, timeout=25.0, max_retries=1)
+                 if SETTINGS.anthropic_api_key and SETTINGS.recap_provider == "claude" else None)
 _icon_locks = {}
 
 
@@ -445,7 +451,11 @@ async def play_match_image(detail, queued_players, all_teammates, representative
         map_background_path=map_background_path,
         icon_maps=icon_maps, icon_img=icon_img,
         session=client.http_session, api_key=SETTINGS.groq_api_key, model=SETTINGS.groq_recap_model,
-        generate_recap=generate_recap, draw_play_result=draw_play_result,
+        generate_recap=functools.partial(generate_recap, claude_client=claude_client,
+                                         claude_model=SETTINGS.claude_recap_model,
+                                         claude_effort=SETTINGS.claude_recap_effort),
+        draw_play_result=draw_play_result,
+        recap_deadline=CLAUDE_RECAP_DEADLINE_SECONDS if claude_client else RECAP_DEADLINE_SECONDS,
     )
 
 
@@ -629,6 +639,9 @@ async def on_ready():
             load_announced=state.load_announced_updates, save_announced=state.save_announced_updates,
         ), name="update-notes")
     logger.info(f"Logged in as {client.user}")
+    logger.info("Match recaps: %s", f"Claude ({SETTINGS.claude_recap_model}, {SETTINGS.claude_recap_effort} effort)"
+                + (", Groq as backup" if SETTINGS.groq_api_key else "") if claude_client
+                else ("Groq" if SETTINGS.groq_api_key else "local only (no AI key set)"))
     logger.info("Team lookup: %s", f"ID {TEAM_ID}" if TEAM_ID else f"name {TEAM_NAME}#{TEAM_TAG}")
 
 

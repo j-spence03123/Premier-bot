@@ -76,7 +76,8 @@ async def _players_with_art(queued_players, icon_maps, icon_img):
 
 async def play_match_image(detail, queued_players, all_teammates, representative, summary_players=None, tone="no_filter", *,
                            footer=None, recap_context=None, discord_names=None, squad_context=None, map_background_path,
-                           icon_maps, icon_img, session, api_key, model, generate_recap, draw_play_result):
+                           icon_maps, icon_img, session, api_key, model, generate_recap, draw_play_result,
+                           recap_deadline=None):
     focus = summary_players if summary_players is not None else all_teammates
     path, render_players, recap = await asyncio.gather(
         _map_art(detail, map_background_path),
@@ -85,7 +86,7 @@ async def play_match_image(detail, queued_players, all_teammates, representative
             session, api_key, model, detail, focus, representative,
             registered_only=summary_players is not None, tone=tone, recap_context=recap_context,
             squad_context=squad_context,
-        )),
+        ), recap_deadline),
     )
     if not recap:
         recap = local_matchfeed_recap(detail, focus, representative, recap_context=recap_context,

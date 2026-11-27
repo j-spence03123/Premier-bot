@@ -44,6 +44,10 @@ class Settings:
     groq_api_key: Optional[str]
     groq_model: str
     groq_recap_model: str
+    anthropic_api_key: Optional[str]
+    recap_provider: str
+    claude_recap_model: str
+    claude_recap_effort: str
     competitive_maps: Tuple[str, ...]
 
 
@@ -101,6 +105,10 @@ def load_settings(environ=None) -> Settings:
         groq_api_key=(environ.get("GROQ_API_KEY") or "").strip() or None,
         groq_model=(environ.get("GROQ_MODEL") or "qwen/qwen3.8-27b").strip(),
         groq_recap_model=(environ.get("GROQ_RECAP_MODEL") or "openai/gpt-oss-120b").strip(),
+        anthropic_api_key=(environ.get("ANTHROPIC_API_KEY") or "").strip() or None,
+        recap_provider=(environ.get("RECAP_PROVIDER") or "claude").strip().lower(),
+        claude_recap_model=(environ.get("CLAUDE_RECAP_MODEL") or "claude-sonnet-5-5").strip(),
+        claude_recap_effort=(environ.get("CLAUDE_RECAP_EFFORT") or "medium").strip().lower(),
         competitive_maps=tuple(name.strip() for name in (environ.get("COMPETITIVE_MAPS") or "").split(",")
                                if name.strip()) or DEFAULT_COMPETITIVE_MAPS,
     )

@@ -1,7 +1,13 @@
-import pytest
 import json
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
+import anthropic
+import httpx2
+import pytest
+
+from services import ai_recap
 from services.ai_recap import generate_recap, recap_facts, local_matchfeed_recap
 from services.matchfeed_context import matchfeed_recap_context, recap_callbacks
 
@@ -353,3 +359,103 @@ async def test_ai_receives_squad_lore_and_games_together_as_facts():
     assert "Clutch Allergy" not in messages[0]["content"]
     packet = messages[-1]["content"]
     assert 'LORE: "Clutch Allergy" (inside joke)' in packet and "TOGETHER: 62 games" in packet
+
+
+# --- Claude recaps -------------------------------------------------------------------------------
+
+CLAUDE_PLAYER = {"puuid": "p1", "name": "Player", "team_id": "Red", "stats": {"kills": 12, "deaths": 10}}
+CLAUDE_DETAIL = {"players": [CLAUDE_PLAYER], "metadata": {"map": {"name": "Ascent"}}, "teams": [], "kills": []}
+GOOD_BODY = grounded("Player went 12 kills deep on Ascent.")
+
+
+def claude_message(headline="A night on Ascent", body=GOOD_BODY, stop_reason="end_turn"):
+    text = json.dumps({"headline": headline, "body": body})
+    return SimpleNamespace(content=[SimpleNamespace(type="thinking", thinking=""), SimpleNamespace(type="text", text=text)],
+                           stop_reason=stop_reason, stop_details=None,
+                           usage=SimpleNamespace(input_tokens=2000, output_tokens=900))
+
+
+def claude_client(*results):
+    create = AsyncMock(side_effect=list(results))
+    return SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=create))), create
+
+
+def api_error(status, error_type, message="error"):
+    response = httpx2.Response(status, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages"))
+    body = {"type": "error", "error": {"type": error_type, "message": message}}
+    cls = anthropic.AuthenticationError if status == 401 else anthropic.APIStatusError
+    return cls(message, response=response, body=body)
+
+
+async def recap_with(client, groq_session=None, groq_key="groq-key"):
+    session = groq_session or FakeSession(FakeResponse(200, recap_response("Groq backup", GOOD_BODY)))
+    result = await generate_recap(session, groq_key, "openai/gpt-oss-120b", CLAUDE_DETAIL, [CLAUDE_PLAYER],
+                                  CLAUDE_PLAYER, claude_client=client, claude_model="claude-sonnet-5-5",
+                                  claude_effort="medium")
+    return result, session
+
+
+@pytest.fixture(autouse=True)
+def reset_claude_warnings():
+    ai_recap._claude_warned.clear()
+
+
+@pytest.mark.asyncio
+async def test_claude_writes_the_recap_with_medium_effort_and_json_schema(caplog):
+    client, create = claude_client(claude_message())
+    caplog.set_level("INFO")
+    result, session = await recap_with(client)
+    assert result == {"headline": "A NIGHT ON ASCENT", "recap": " ".join(GOOD_BODY.split())}
+    assert session.request is None  # Groq was not needed
+    request = create.await_args.kwargs
+    assert request["model"] == "claude-sonnet-5-5"
+    assert request["output_config"]["effort"] == "medium"
+    assert request["output_config"]["format"]["schema"] == ai_recap.RECAP_SCHEMA
+    assert request["fallbacks"] == "default" and request["betas"] == ai_recap.CLAUDE_RECAP_BETAS
+    assert "temperature" not in request and "thinking" not in request
+    assert "You write post-match recaps" in request["system"]
+    assert [m["role"] for m in request["messages"]] == ["user", "assistant", "user", "assistant", "user"]
+    assert request["messages"][-1]["content"].startswith("FACTS:")
+    assert "2000 input and 900 output tokens" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_claude_gets_one_rewrite_then_falls_back_to_local_not_groq():
+    bad = claude_message(body="Player went 99 kills deep. " + FILLER * 3)
+    client, create = claude_client(bad, bad)
+    result, session = await recap_with(client)
+    assert result is None and session.request is None
+    retry = create.await_args_list[1].kwargs["messages"]
+    assert retry[-2]["role"] == "assistant" and retry[-1]["content"].startswith("Rejected: numbers not in FACTS: 99")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [
+    api_error(402, "billing_error", "Your credit balance is too low"),
+    api_error(401, "authentication_error"),
+    api_error(529, "overloaded_error"),
+    anthropic.APIConnectionError(request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages")),
+    claude_message(stop_reason="refusal"),
+    RuntimeError("unexpected SDK change"),
+])
+async def test_claude_unavailable_falls_back_to_groq(failure):
+    client, _ = claude_client(failure)
+    result, session = await recap_with(client)
+    assert result["headline"] == "GROQ BACKUP"
+    assert session.request is not None
+
+
+@pytest.mark.asyncio
+async def test_claude_unavailable_without_groq_uses_local_recap():
+    client, _ = claude_client(api_error(529, "overloaded_error"))
+    result, session = await recap_with(client, groq_key=None)
+    assert result is None and session.request is None
+
+
+@pytest.mark.asyncio
+async def test_low_credit_is_logged_once_until_a_recap_succeeds(caplog):
+    credit = api_error(402, "billing_error", "Your credit balance is too low")
+    client, _ = claude_client(credit, credit, claude_message(), credit)
+    for _ in range(4):
+        await recap_with(client)
+    assert caplog.text.count("credit balance is too low") == 2  # once, then again after the top-up worked

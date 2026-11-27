@@ -51,9 +51,13 @@ Set these in `.env` or the process environment. See `.env.example`.
 | `AFFINITY` | | `eu` | Region: `eu`, `na`, `ap`, `kr`, `latam`, `br` |
 | `COMPETITIVE_MAPS` | | `Abyss,Bind,Corrode,Haven,Lotus,Summit,Sunset` | Map pool for playbook menus |
 | `GUILD_ID` | | | Sync commands to one server instead of globally |
-| `GROQ_API_KEY` | | | Enables AI recaps |
+| `ANTHROPIC_API_KEY` | | | Claude writes match recaps (paid) |
+| `RECAP_PROVIDER` | | `claude` | `claude` or `groq` for match recaps |
+| `CLAUDE_RECAP_MODEL` | | `claude-sonnet-5-5` | Claude model for match recaps |
+| `CLAUDE_RECAP_EFFORT` | | `medium` | `low`, `medium` or `high`; higher costs more |
+| `GROQ_API_KEY` | | | Weekly summaries, and match recaps when Claude is off or unavailable |
 | `GROQ_MODEL` | | `qwen/qwen3.8-27b` | Model for weekly summaries |
-| `GROQ_RECAP_MODEL` | | `openai/gpt-oss-120b` | Model for match feed recaps |
+| `GROQ_RECAP_MODEL` | | `openai/gpt-oss-120b` | Model for match feed recaps when Groq writes them |
 | `X_BEARER_TOKEN`, `X_USERNAME` | | | Optional X API schedule lookup |
 | `X_KEYWORD` | | `premier` | Keyword for the X schedule lookup |
 
