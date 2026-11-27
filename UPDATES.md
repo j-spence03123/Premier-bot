@@ -9,6 +9,9 @@ The bot posts new entries here to every match feed channel the next time it star
 - On its very first run the bot posts only the newest entry, so older history is never spammed.
 -->
 
+## 2026-11-28
+Fixed: KNIFED and KNIFE tags were sometimes missed.
+
 ## 2026-11-27
 - AI recaps now use Claude Sonnet 5.5, so they're more accurate and readable
 - `/rank` shows when you're at your peak
