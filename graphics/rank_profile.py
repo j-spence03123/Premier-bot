@@ -33,8 +33,10 @@ def draw_rank_profile(player_name, current, peak, current_icon=None, peak_icon=N
     draw.text((1140, 70), _fit(draw, player_name, name_font, 850), font=name_font, fill=white, anchor='rm')
     draw.line((58, 108, 1142, 108), fill=(58, 56, 64), width=2)
     peaked = at_peak(current, peak)
-    if peaked and peak.get('rr') is None:
-        peak = {**peak, 'rr': current.get('rr')}
+    current_rr, peak_rr = current.get('rr'), peak.get('rr')
+    # In the same tier the peak RR can't be below the current RR; HenrikDev often reports it as 0.
+    if peaked and isinstance(current_rr, int) and (not isinstance(peak_rr, int) or peak_rr < current_rr):
+        peak = {**peak, 'rr': current_rr}
     draw.rounded_rectangle((60, 148, 580, 450), radius=12, fill=(34, 33, 39), outline=(61, 59, 67), width=1)
     draw.rounded_rectangle((620, 148, 1140, 450), radius=12, fill=(34, 33, 39),
                            outline=coral if peaked else (61, 59, 67), width=2 if peaked else 1)

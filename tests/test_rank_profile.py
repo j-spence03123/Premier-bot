@@ -35,6 +35,24 @@ def test_at_peak_card_renders_badge_and_borrows_current_rr():
         assert below.getpixel((620, 300)) != (240, 99, 106)
 
 
+def test_at_peak_card_never_shows_peak_rr_below_current(monkeypatch):
+    from graphics import rank_profile
+    labels = []
+    original = rank_profile.ImageDraw.ImageDraw.text
+
+    def capture(self, xy, text, *args, **kwargs):
+        labels.append((xy[0], text))
+        return original(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(rank_profile.ImageDraw.ImageDraw, "text", capture)
+    current = {'tier': {'id': 18, 'name': 'Diamond 1'}, 'rr': 10}
+    draw_rank_profile('Player#TAG', current, {'tier': {'id': 18, 'name': 'Diamond 1'}, 'rr': 0})
+    assert (880, '10 RR') in labels and (880, '0 RR') not in labels
+    labels.clear()
+    draw_rank_profile('Player#TAG', current, {'tier': {'id': 19, 'name': 'Diamond 2'}, 'rr': 0})
+    assert (880, '0 RR') in labels  # below peak, the peak's own RR is shown as reported
+
+
 @pytest.mark.asyncio
 async def test_rank_command_sends_image_with_rr_and_last_change(monkeypatch):
     interaction = SimpleNamespace(user=object(), response=SimpleNamespace(defer=AsyncMock()),
