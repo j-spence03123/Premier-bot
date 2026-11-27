@@ -9,10 +9,7 @@ The bot posts new entries here to every match feed channel the next time it star
 - On its very first run the bot posts only the newest entry, so older history is never spammed.
 -->
 
-## 2026-11-27 b
-AI match recaps are now written by Claude Sonnet 5.5: fewer made-up details, jokes that fit what actually happened, and one story per game instead of a stat rundown.
-
 ## 2026-11-27
-- AI match recaps should read better: fewer made-up details, and one story per game instead of a stat rundown.
+- AI match recaps are now written by Claude Sonnet 5.5: fewer made-up details, jokes that fit what actually happened, and one story per game instead of a stat rundown.
 - `/rank` now highlights when you're sitting at your peak rank.
 - The end-of-session recap card is gone. Match cards still show which game of the session it was.
