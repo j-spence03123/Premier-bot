@@ -376,6 +376,21 @@ def test_knifed_is_shared_by_everyone_an_enemy_knifes():
     assert "KNIFED x2" in tags["Red-3"]
 
 
+def test_knife_with_no_name_still_counts():
+    """HenrikDev sent a real knife kill as {"name": None, "type": "Melee"} with the knife's ID."""
+    players, enemies = _roast_lobby()
+    nameless_knife = {"id": "2f59173c-4bed-b6c3-2191-dea9b58be9c7", "name": None, "type": "Melee"}
+    knifed = _kill(0, "Blue-0", "Red-1")
+    knifed["weapon"] = nameless_knife
+    knife = _kill(1, "Red-2", "Blue-3")
+    knife["weapon"] = {"id": "2f59173c-4bed-b6c3-2191-dea9b58be9c7", "name": None, "type": "Weapon"}
+
+    tags = _tags_for(players, enemies, [knifed, knife])
+
+    assert "KNIFED" in tags["Red-1"]
+    assert "KNIFE" in tags["Red-2"]
+
+
 def test_choker_goes_to_the_last_player_alive_in_lost_rounds():
     players, enemies = _roast_lobby()
     kills, rounds = [], []

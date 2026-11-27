@@ -35,6 +35,7 @@ SHARED_TAGS = {"ACE", "CLUTCH", "VICTIM", "KNIFE", "KNIFED", "AFK"}
 OPERATOR_MIN_KILLS = 6
 EXIT_FARMER_MIN_KILLS = 6
 KNIFE_WEAPONS = {"knife", "melee"}
+KNIFE_WEAPON_ID = "2f59173c-4bed-b6c3-2191-dea9b58be9c7"  # valorant-api.com "Melee"
 ECO_LOADOUT_RATIO = 0.5
 ECO_MIN_KILLER_LOADOUT = 2500
 PASSENGER_SCORE_RATIO = 0.8
@@ -64,6 +65,15 @@ def _assign_unique_tags(tracked):
         assigned[index].append(tag)
     for item, tags in zip(tracked, assigned):
         item["tags"] = [tag for tag in item["tags"] if tag in tags]
+
+
+def _is_knife(weapon):
+    """HenrikDev sometimes sends the knife as {"name": None, "type": "Melee"}, so check every field."""
+    if not isinstance(weapon, dict):
+        return False
+    return (str(weapon.get("name") or "").casefold() in KNIFE_WEAPONS
+            or str(weapon.get("type") or "").casefold() in KNIFE_WEAPONS
+            or str(weapon.get("id") or "").casefold() == KNIFE_WEAPON_ID)
 
 
 def _round_number(round_data, index):
@@ -126,7 +136,7 @@ def _kill_events(detail):
         weapon_name = str(weapon.get("name") or "").casefold() if isinstance(weapon, dict) else ""
         if weapon_name == "operator":
             operator[killer] = operator.get(killer, 0) + 1
-        if weapon_name in KNIFE_WEAPONS:
+        if _is_knife(weapon):
             knife[killer] = knife.get(killer, 0) + 1
         round_number = event.get("round", 0) or 0
         winner = winners.get(round_number)
@@ -165,8 +175,7 @@ def _roast_events(detail, teammate_ids):
             if len(helpers - {killer}) >= 2:
                 counts["stolen"][killer] = counts["stolen"].get(killer, 0) + 1
         if victim in teammate_ids and killer and killer not in teammate_ids:
-            weapon = event.get("weapon") or {}
-            if isinstance(weapon, dict) and str(weapon.get("name") or "").casefold() in KNIFE_WEAPONS:
+            if _is_knife(event.get("weapon")):
                 counts["knifed"][victim] = counts["knifed"].get(victim, 0) + 1
     for number, events in by_round.items():
         if not all(isinstance(event.get("time_in_round_in_ms"), (int, float)) for event in events):
