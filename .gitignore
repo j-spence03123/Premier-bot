@@ -26,6 +26,7 @@ matchfeeds.json
 rankstates.json
 weekly_recaps.json
 clutches.json
+announced_updates.json
 
 # Downloaded/cached map and agent images.
 icons/

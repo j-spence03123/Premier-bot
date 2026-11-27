@@ -13,6 +13,7 @@ A Discord bot that tracks a VALORANT squad: auto-posted match cards, rank change
 - **Playbooks**: browse strategies by map and side; import playbooks and lineups from Google Sheets.
 - **Sessions and recaps**: `/play` queue sessions, weekly recaps, scheduled queue reminders.
 - **Account linking**: link a main account plus up to two smurfs per member.
+- **Update notes**: new entries in `UPDATES.md` are posted to each match feed channel the next time the bot starts.
 
 Run `/help` in Discord for the full command list.
 

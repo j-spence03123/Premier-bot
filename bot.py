@@ -21,6 +21,7 @@ from graphics.scoreboard import draw_scoreboard
 from services import (background_tasks, match_images, asset_helpers, premier_helpers, discord_helpers,
                       account_helpers, agent_helpers, playbook_helpers)
 from services.bot_state import BotState
+from services.update_notes import announce_update_notes
 from services.cache import JsonCache
 from services.ai_recap import generate_recap
 from services.json_store import JsonStoreError, read_json
@@ -69,6 +70,7 @@ class BotClient(commands.Bot):
         self._commands_synced = False
         self._icons_warmed = False
         self._icon_warm_task = None
+        self._update_notes_task = None
 
     async def setup_hook(self):
         await super().setup_hook()
@@ -621,6 +623,11 @@ async def on_ready():
         client._commands_synced = True
     if not client._icons_warmed and (client._icon_warm_task is None or client._icon_warm_task.done()):
         client._icon_warm_task = asyncio.create_task(warm_icon_cache(), name="warm-icon-cache")
+    if client._update_notes_task is None:  # on_ready fires again after reconnects; announce once per start
+        client._update_notes_task = asyncio.create_task(announce_update_notes(
+            client=client, notes_path=SETTINGS.update_notes_file, load_matchfeeds=load_matchfeeds,
+            load_announced=state.load_announced_updates, save_announced=state.save_announced_updates,
+        ), name="update-notes")
     logger.info(f"Logged in as {client.user}")
     logger.info("Team lookup: %s", f"ID {TEAM_ID}" if TEAM_ID else f"name {TEAM_NAME}#{TEAM_TAG}")
 

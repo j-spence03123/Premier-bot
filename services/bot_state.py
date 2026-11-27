@@ -75,6 +75,12 @@ class BotState:
     def save_clutches(self, value):
         self._write(self.settings.clutches_file, value)
 
+    def load_announced_updates(self):
+        return self._read(self.settings.announced_updates_file)
+
+    def save_announced_updates(self, value):
+        self._write(self.settings.announced_updates_file, value)
+
     def load_queue_schedules(self):
         return self._read(self.settings.queue_schedule_file)
 
